@@ -85,6 +85,7 @@ migrations/          Alembic
 tests/
 requirements.txt     used by Streamlit Community Cloud
 ```
+
 ## Not yet built
 
 Agents (Research, Teaching, Service, Chancellor's Office), Eligibility Checker, Report Builder, LangGraph graph,
