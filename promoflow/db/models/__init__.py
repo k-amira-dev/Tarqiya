@@ -1,0 +1,37 @@
+"""Importing this package registers every table on Base.metadata (needed by Alembic and the seed script)."""
+from promoflow.db.models.org import AuthSession, College, Department, User, UserRole
+from promoflow.db.models.reference import (
+    Journal, JournalRanking, LookupValue, PolicyChunk, PolicyVersion, PromotionCriteria, ResearchItemCap,
+    Rubric, RubricItem,
+)
+from promoflow.db.models.case import (
+    CaseDocument, CaseStatusHistory, Degree, NonAcademicPosition, PromotionCase, RankHistory,
+    RecommendationLetter, ScopusEvidence,
+)
+from promoflow.db.models.research import (
+    Award, Book, CoauthoredPaperEvaluation, ConferencePaper, CreativeWork, FundedProject,
+    JournalCriteriaConfirmation, Patent, Publication, PublicationAuthor,
+)
+from promoflow.db.models.teaching import (
+    AdvisingSemester, CourseFile, CourseTaught, CurriculumContribution, PeerObservation, StudentSatisfaction,
+    Supervision, TeachingDevelopment, TeachingInnovation,
+)
+from promoflow.db.models.service import (
+    AdministrativePosition, CommitteeMembership, CommunityActivity, PolicyContribution, TrainingDelivered,
+    WorkshopDelivered,
+)
+from promoflow.db.models.assessment import (
+    AgentAssessment, AgentRun, CaseReport, Claim, CriterionResult, DeanEvaluation, Flag, GateDecision,
+    ItemResult, RubricScore,
+)
+from promoflow.db.models.referees import (
+    OutreachMessage, Referee, RefereeCandidate, RefereePaperGrade, RefereeReport, ResearcherProfile,
+    ReviewerAssignment,
+)
+from promoflow.db.models.audit import AuditLogEntry
+
+# Tables that only use portable column types; used to run the login flow on SQLite without PostgreSQL.
+AUTH_TABLES = [
+    College.__table__, Department.__table__, User.__table__, UserRole.__table__, AuthSession.__table__,
+    AuditLogEntry.__table__,
+]
