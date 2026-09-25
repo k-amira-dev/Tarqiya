@@ -30,8 +30,12 @@ from promoflow.db.models.referees import (
 )
 from promoflow.db.models.audit import AuditLogEntry
 
-# Tables that only use portable column types; used to run the login flow on SQLite without PostgreSQL.
+# Tables that only use portable column types; they also run on SQLite, for tests without PostgreSQL.
 AUTH_TABLES = [
     College.__table__, Department.__table__, User.__table__, UserRole.__table__, AuthSession.__table__,
     AuditLogEntry.__table__,
+]
+SQLITE_TABLES = AUTH_TABLES + [
+    PolicyVersion.__table__, PromotionCriteria.__table__, ResearchItemCap.__table__, Rubric.__table__,
+    RubricItem.__table__, LookupValue.__table__, PromotionCase.__table__, CaseStatusHistory.__table__,
 ]

@@ -1,0 +1,23 @@
+# PromoFlow theme: University of Sharjah palette. Detailed styling is in promoflow/ui/theme.py.
+[theme]
+base = "light"
+primaryColor = "#009B72"
+backgroundColor = "#F4F5F2"
+secondaryBackgroundColor = "#F5F7F5"
+textColor = "#0F1411"
+borderColor = "#DCE3DF"
+showWidgetBorder = true
+baseRadius = "10px"
+font = "sans serif"
+
+[theme.sidebar]
+backgroundColor = "#0B0D0C"
+secondaryBackgroundColor = "#171B19"
+textColor = "#E9EEEB"
+borderColor = "#2A302D"
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false

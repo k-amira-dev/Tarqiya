@@ -2,7 +2,7 @@
 from datetime import date, datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text,
+    JSON, BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text,
     UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -33,7 +33,7 @@ class PromotionCase(IdMixin, TimestampMixin, Base):
     # §4.2 promotion track details
     specialization: Mapped[str | None] = mapped_column(String(200))
     fine_specialization: Mapped[str | None] = mapped_column(String(200))
-    research_keywords: Mapped[list[str] | None] = mapped_column(ARRAY(String(80)))
+    research_keywords: Mapped[list[str] | None] = mapped_column(ARRAY(String(80)).with_variant(JSON(), "sqlite"))
 
     # §4.3 appointment and current rank
     appointment_date: Mapped[date | None] = mapped_column(Date)

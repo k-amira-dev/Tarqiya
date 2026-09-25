@@ -65,21 +65,27 @@ Reference data (criteria, rubrics, dropdown lists, test accounts) is loaded with
 ## Layout
 
 ```
-app/                 Streamlit pages (Home.py = login + dashboard)
+app/Home.py          entry point: login gate, role-based navigation
+.streamlit/          theme (UoS palette) and client settings
 promoflow/
   auth/              password hashing, sessions, roles (UI-independent)
   db/
     models/          SQLAlchemy models, one module per domain (65 tables)
     enums.py         fixed value lists used by the rules
     seed.py          reference data + test accounts
-  ui/                Streamlit helpers (login gate)
+  dossier/           load/save logic per dossier section (section0.py)
+  rules/             deterministic checks, no LLM (eligibility.py)
+  ui/
+    theme.py         design system: colours, fonts, cards, CSS for Streamlit widgets
+    auth.py          login and first-login profile screens
+    shell.py         black sidebar with the dossier navigator
+    views/           one module per page (dashboard, section0)
   config.py          settings from .env or Streamlit Secrets
 migrations/          Alembic
 tests/
 requirements.txt     used by Streamlit Community Cloud
 ```
-
 ## Not yet built
 
 Agents (Research, Teaching, Service, Chancellor's Office), Eligibility Checker, Report Builder, LangGraph graph,
-dossier pages, review pages, file storage on Supabase, Reminder & Webhook Worker, journal-ranking import.
+dossier sections 1–11, review pages, file storage on Supabase, Reminder & Webhook Worker, journal-ranking import.

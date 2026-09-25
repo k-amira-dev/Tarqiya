@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 import streamlit as st
-import streamlit.components.v1 as components
 from sqlalchemy.exc import OperationalError
 
 from promoflow.auth.service import (
@@ -18,6 +17,7 @@ from promoflow.config import DATABASE_URL, SESSION_HOURS
 from promoflow.db.enums import RoleName
 from promoflow.db.models import User
 from promoflow.db.session import session_scope
+from promoflow.ui import theme
 
 COOKIE = "promoflow_session"
 
@@ -43,11 +43,12 @@ class CurrentUser:
 
 
 def _write_cookie(value: str, max_age: int) -> None:
-    # Streamlit can read cookies (st.context.cookies) but not set them, so a tiny script sets it on the page.
-    components.html(
+    # Streamlit can read cookies (st.context.cookies) but not set them, so a tiny same-origin script sets it.
+    # Only our own fixed script and a random token go in here, never user input.
+    st.iframe(
         f"<script>window.parent.document.cookie = '{COOKIE}={value}; path=/; max-age={max_age}; SameSite=Strict';"
         "</script>",
-        height=0,
+        height=1,
     )
 
 
@@ -63,13 +64,32 @@ def _load(token: str | None) -> CurrentUser | None:
         )
 
 
+def _auth_frame(title: str, subtitle: str):
+    """Black top bar + a centred white card; returns the card container."""
+    theme.inject_auth()
+    theme.html(f"""
+    <div class="pf-topbar"><div class="l">{theme.logo(26)}<span>PromoFlow</span></div>
+    <div class="r">University of Sharjah · Faculty Promotion Review</div></div>""")
+    _, mid, _ = st.columns([1, 1.15, 1])
+    card = mid.container(key="auth_card")
+    theme.html(f"""
+    <div class="pf-auth-mark">{theme.logo(46, "#fff")}</div>
+    <div class="pf-auth-h">{theme.esc(title)}</div>
+    <div class="pf-auth-s">{theme.esc(subtitle)}</div>""", card)
+    return mid, card
+
+
 def _login_form() -> None:
-    st.title("PromoFlow")
-    st.caption("Faculty promotion review – decision support")
-    with st.form("login"):
-        email = st.text_input("University email")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Log in", type="primary")
+    mid, card = _auth_frame("Welcome to PromoFlow", "Sign in to continue to your promotion workspace")
+    with card:
+        with st.form("login", border=False):
+            email = st.text_input("University email", placeholder="name@sharjah.ac.ae")
+            password = st.text_input("Password", type="password", placeholder="••••••••")
+            submitted = st.form_submit_button("Sign in  →", type="primary", use_container_width=True)
+        error_slot = st.empty()
+        theme.html('<div class="pf-auth-foot">Accounts are issued by the promotion office.<br/>'
+                   'University single sign-on will replace passwords in production.</div>')
+    theme.html('<div class="pf-legal">Decision support only: every step is approved by a person.</div>', mid)
     if submitted:
         error, token = None, None
         with session_scope() as s:
@@ -79,22 +99,22 @@ def _login_form() -> None:
             except LoginError as e:
                 error = str(e)  # caught inside the scope so the failed-attempt counter is saved
         if error:
-            st.error(error)
+            error_slot.error(error)
         else:
             st.session_state["token"] = token
             _write_cookie(token, SESSION_HOURS * 3600)
             st.rerun()
-    st.info("Accounts are created by the PromoFlow administrator. University single sign-on is planned for "
-            "production.")
 
 
 def _profile_form(user: CurrentUser) -> None:
-    st.title("Complete your profile")
-    st.write("Before you start, confirm the details that will appear on your promotion application.")
-    with st.form("profile"):
-        full_name = st.text_input("Full name (as on official documents)", value=user.full_name or "")
-        employee_id = st.text_input("Employee ID", value=user.employee_id or "")
-        submitted = st.form_submit_button("Save and continue", type="primary")
+    _, card = _auth_frame("Complete your profile",
+                          "These details appear on your promotion application. You only do this once.")
+    with card:
+        with st.form("profile", border=False):
+            full_name = st.text_input("Full name (as on official documents)", value=user.full_name or "")
+            employee_id = st.text_input("Employee ID", value=user.employee_id or "", placeholder="e.g. E-1001")
+            submitted = st.form_submit_button("Save and continue  →", type="primary", use_container_width=True)
+        error_slot = st.empty()
     if submitted:
         error = None
         with session_scope() as s:
@@ -103,7 +123,7 @@ def _profile_form(user: CurrentUser) -> None:
             except LoginError as e:
                 error = str(e)
         if error:
-            st.error(error)
+            error_slot.error(error)
         else:
             st.rerun()
 
@@ -136,11 +156,6 @@ def _gate(allowed: tuple[RoleName, ...]) -> CurrentUser:
     if allowed and not user.has(*allowed):
         st.error("You do not have access to this page.")
         st.stop()
-    with st.sidebar:
-        st.write(f"**{user.full_name}**")
-        st.caption(" · ".join(ROLE_LABELS[g.role] for g in user.roles) or "No role assigned")
-        if st.button("Log out"):
-            logout()
     return user
 
 
