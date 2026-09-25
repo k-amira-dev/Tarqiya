@@ -11,3 +11,7 @@ data/
 .vscode/
 node_modules/
 package-lock.json
+
+# Local-only tooling and generated schema files (kept on the developer machine, not on GitHub)
+docs/
+scripts/

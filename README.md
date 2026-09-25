@@ -38,34 +38,27 @@ Open http://localhost:5050 (pgAdmin). The server "PromoFlow (local)" is already 
 you open it, enter the database password `promoflow`. Tables are under
 Databases → promoflow → Schemas → public → Tables; right-click a table → View/Edit Data → All Rows.
 
-### Trying the login without Docker
-
-The login tables use only portable types, so they also run on SQLite:
-
-```bash
-set DATABASE_URL=sqlite:///data/dev_auth.db     # macOS/Linux: export DATABASE_URL=...
-python scripts/init_sqlite_auth.py
-streamlit run app/Home.py
-```
-
 ## Tests
 
 ```bash
 pytest
 ```
 
-The tests need no database server: schema checks compile every table for PostgreSQL, and the login tests
-(including the real Streamlit page, headless) run on in-memory SQLite.
+No database server needed: schema checks compile every table for PostgreSQL, and the login tests (including
+the real Streamlit page, headless) run on in-memory SQLite.
 
 ## Changing the schema
 
 1. Edit the models in `promoflow/db/models/`.
-2. With the Docker database running: `alembic revision --autogenerate -m "short description"`, review the file.
-3. `alembic upgrade head`, commit the model change and the migration together.
-4. Refresh the schema document: `python scripts/export_schema.py`, `python scripts/draw_er_overview.py`,
-   `node scripts/build_schema_doc.js PromoFlow_Database_Schema.docx` (needs `npm install docx`).
+2. With the Docker database running: `alembic revision --autogenerate -m "short description"`, then review the file.
+3. `alembic upgrade head`, and commit the model change and the migration together.
+4. Teammates pull and run `alembic upgrade head`.
 
-The first migration (`0001`) was generated without a database by `scripts/generate_initial_migration.py`.
+## Sharing the app for testing
+
+Each developer's database is on their own laptop. To let teammates test against *your* data, run the app and
+give them the "Network URL" Streamlit prints (same Wi-Fi only; your laptop must stay on). The database and
+pgAdmin are bound to 127.0.0.1, so only the app is reachable from the network. Use fictional data only.
 
 ## Layout
 
@@ -79,8 +72,7 @@ promoflow/
     seed.py          reference data + dev accounts
   ui/                Streamlit helpers (login gate)
 migrations/          Alembic
-scripts/             migration generator, schema export, ER diagram, schema document builder
-docs/                schema.json, schema.sql, er_overview.png
+docker/              pgAdmin server registration
 tests/
 ```
 
