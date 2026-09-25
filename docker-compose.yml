@@ -1,5 +1,5 @@
-# Local PostgreSQL 16 with the pgvector extension. Data stays on this machine (privacy decision).
-#   docker compose up -d
+# Local PostgreSQL 16 with pgvector, plus pgAdmin to browse it. Data stays on this machine (privacy decision).
+#   docker compose up -d        then open http://localhost:5050 for pgAdmin
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -17,5 +17,24 @@ services:
       interval: 5s
       retries: 10
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: promoflow-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: promoflow
+      # Development only: open pgAdmin without its own login and without a master password.
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - ./docker/pgadmin-servers.json:/pgadmin4/servers.json:ro
+      - pgadmin:/var/lib/pgadmin
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  pgadmin:

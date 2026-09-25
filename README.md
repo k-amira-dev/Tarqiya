@@ -18,7 +18,7 @@ A human approves every step; the agents prepare and check the evidence.
 Prerequisites: Python 3.12+ and [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
 ```bash
-docker compose up -d                 # PostgreSQL + pgvector on localhost:5432
+docker compose up -d                 # PostgreSQL + pgvector (localhost:5432) and pgAdmin (localhost:5050)
 python -m venv .venv
 .venv\Scripts\activate               # Windows  (macOS/Linux: source .venv/bin/activate)
 pip install -e .[dev]
@@ -31,6 +31,12 @@ streamlit run app/Home.py
 Development accounts (password = `DEV_PASSWORD` in `.env`, default `promoflow-dev`):
 `applicant@`, `hod.cs@`, `dean.comp@`, `chancellor@`, `admin@` — all `…@promoflow.test`.
 They belong to a fictional college. Never put real faculty data in a development database.
+
+### Looking at the data
+
+Open http://localhost:5050 (pgAdmin). The server "PromoFlow (local)" is already registered; the first time
+you open it, enter the database password `promoflow`. Tables are under
+Databases → promoflow → Schemas → public → Tables; right-click a table → View/Edit Data → All Rows.
 
 ### Trying the login without Docker
 
