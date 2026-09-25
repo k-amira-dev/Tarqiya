@@ -4,15 +4,17 @@ The session token is kept in st.session_state and in a browser cookie, so a page
 new Streamlit session) does not log the user out. Only the token's hash is in the database.
 """
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 import streamlit as st
 import streamlit.components.v1 as components
+from sqlalchemy.exc import OperationalError
 
 from promoflow.auth.service import (
     LoginError, RoleGrant, authenticate, complete_profile, create_session, revoke_session, roles_for,
     user_for_token,
 )
-from promoflow.config import SESSION_HOURS
+from promoflow.config import DATABASE_URL, SESSION_HOURS
 from promoflow.db.enums import RoleName
 from promoflow.db.models import User
 from promoflow.db.session import session_scope
@@ -108,6 +110,17 @@ def _profile_form(user: CurrentUser) -> None:
 
 def require_login(*allowed: RoleName) -> CurrentUser:
     """Show the login or profile form and stop the page until the user is ready; enforce roles if given."""
+    try:
+        return _gate(allowed)
+    except OperationalError as e:
+        # Say which database could not be reached (never the password), instead of a long traceback.
+        st.error(f"Cannot reach the database at **{urlsplit(DATABASE_URL).hostname}**. "
+                 "Check DATABASE_URL in .env (local) or in the app's Secrets (Streamlit Cloud).")
+        st.caption(str(e.orig).splitlines()[0] if e.orig else "")
+        st.stop()
+
+
+def _gate(allowed: tuple[RoleName, ...]) -> CurrentUser:
     token = st.session_state.get("token") or st.context.cookies.get(COOKIE)
     if not isinstance(token, str):  # no cookie context (e.g. headless tests) or malformed value
         token = None

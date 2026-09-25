@@ -1,19 +1,37 @@
-"""Settings read from the environment (.env in development). See .env.example."""
+"""Settings, looked up in this order: environment variables (.env in development), then Streamlit Secrets
+(Streamlit Community Cloud), then the defaults below. See .env.example."""
 import os
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://promoflow:promoflow@localhost:5432/promoflow")
+
+def _setting(name: str, default: str) -> str:
+    if name in os.environ:
+        return os.environ[name]
+    try:
+        from streamlit.runtime import exists
+
+        if exists():  # only inside a running Streamlit app; scripts and tests skip this
+            import streamlit as st
+
+            if name in st.secrets:
+                return str(st.secrets[name])
+    except Exception:
+        pass
+    return default
+
+
+DATABASE_URL = _setting("DATABASE_URL", "postgresql+psycopg://promoflow:promoflow@localhost:5432/promoflow")
 
 # Must match the embedding model chosen for the policy knowledge base; changing it needs a migration.
-EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1536"))
+EMBEDDING_DIM = int(_setting("EMBEDDING_DIM", "1536"))
 
-# Evidence files are stored on local disk, never in a third-party cloud (privacy decision).
-EVIDENCE_DIR = os.getenv("EVIDENCE_DIR", "./data/evidence")
+# Local folder for evidence files in development; the online test deployment will use Supabase Storage.
+EVIDENCE_DIR = _setting("EVIDENCE_DIR", "./data/evidence")
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # same limit as the university's current platform
 
-SESSION_HOURS = int(os.getenv("SESSION_HOURS", "8"))
+SESSION_HOURS = int(_setting("SESSION_HOURS", "8"))
 MAX_FAILED_LOGINS = 5
 LOCKOUT_MINUTES = 15
