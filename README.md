@@ -41,6 +41,19 @@ Test accounts (password = `DEV_PASSWORD`, default `promoflow-dev`): `applicant@`
 
 To look at the data: Supabase dashboard → **Table Editor**.
 
+## Creating accounts
+
+Until the Admin › Users & roles page exists, accounts are created from the command line. The password is
+typed at a hidden prompt and never stored in plain text:
+
+```bash
+.venv\Scripts\python -m promoflow.admin create-user --email name@sharjah.ac.ae --name "Dr. Full Name" --college "College name" --department "Department name"
+.venv\Scripts\python -m promoflow.admin set-password --email name@sharjah.ac.ae
+```
+
+Add `--role hod`, `--role dean`, ... for reviewers (default: applicant). New colleges and departments are
+created automatically.
+
 ## Tests
 
 ```bash
