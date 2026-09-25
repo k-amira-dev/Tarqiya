@@ -54,6 +54,13 @@ the real Streamlit page, headless) run on in-memory SQLite.
 3. `alembic upgrade head`, and commit the model change and the migration together.
 4. Teammates pull and run `alembic upgrade head`.
 
+## Online test deployment
+
+The shared test app runs on Streamlit Community Cloud (entry point `app/Home.py`, packages from
+`requirements.txt`) with a Supabase PostgreSQL database. Every push to `main` redeploys it. The database
+address is set in the app's Secrets as `DATABASE_URL`, never in the repository.
+**Only fictional data goes into the online deployment.**
+
 ## Sharing the app for testing
 
 Each developer's database is on their own laptop. To let teammates test against *your* data, run the app and
