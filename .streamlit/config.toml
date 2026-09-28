@@ -21,3 +21,7 @@ toolbarMode = "minimal"
 
 [browser]
 gatherUsageStats = false
+
+[server]
+# Matches the 25 MB evidence-file limit (spec §2.4), same as the current platform.
+maxUploadSize = 25

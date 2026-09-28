@@ -4,14 +4,25 @@ import streamlit as st
 from promoflow.db.enums import RoleName
 from promoflow.ui import theme
 from promoflow.ui.auth import ROLE_LABELS, CurrentUser, logout
-from promoflow.ui.views import dashboard, section0
+from promoflow.ui.views import (
+    dashboard, section0, section1, section2, section3, section4, section5, section6, section7, section8,
+    section9, section10, section11,
+)
 
-# Dossier sections not built yet: shown in the navigator so applicants see the whole journey.
-UPCOMING_SECTIONS = [
-    ("1", "Application form"), ("2", "Curriculum vitae"), ("3", "Degrees & equivalency"),
-    ("4", "Ranks & experience"), ("5", "Research"), ("6", "Teaching & advising"),
-    ("7", "University & community service"), ("8", "Recommendation letters"), ("9", "Conditions form"),
-    ("10", "Cover letter"), ("11", "Review & submit"),
+# Every applicant-facing dossier section, in order. This is the whole dossier (§0-11).
+SECTIONS = [
+    ("0", "Applicant details", ":material/badge:", "applicant-details", section0.render),
+    ("1", "Application form", ":material/description:", "application-form", section1.render),
+    ("2", "Curriculum vitae", ":material/contact_page:", "curriculum-vitae", section2.render),
+    ("3", "Degrees & equivalency", ":material/school:", "degrees", section3.render),
+    ("4", "Ranks & experience", ":material/timeline:", "ranks", section4.render),
+    ("5", "Research", ":material/science:", "research", section5.render),
+    ("6", "Teaching & advising", ":material/menu_book:", "teaching", section6.render),
+    ("7", "University & community service", ":material/volunteer_activism:", "service", section7.render),
+    ("8", "Recommendation letters", ":material/mail:", "recommendation-letters", section8.render),
+    ("9", "Conditions form", ":material/rule:", "conditions-form", section9.render),
+    ("10", "Cover letter", ":material/draft:", "cover-letter", section10.render),
+    ("11", "Review & submit", ":material/send:", "review-submit", section11.render),
 ]
 
 
@@ -19,8 +30,8 @@ def pages_for(user: CurrentUser) -> dict[str, st.Page]:
     pages = {"home": st.Page(dashboard.render, title="Dashboard", icon=":material/space_dashboard:",
                              url_path="home", default=True)}
     if user.has(RoleName.APPLICANT):
-        pages["section0"] = st.Page(section0.render, title="Applicant details", icon=":material/badge:",
-                                    url_path="applicant-details")
+        for code, title, icon, url_path, render in SECTIONS:
+            pages[f"section{code}"] = st.Page(render, title=title, icon=icon, url_path=url_path)
     return pages
 
 
@@ -32,10 +43,8 @@ def sidebar(user: CurrentUser, pages: dict[str, st.Page]) -> None:
 
         if user.has(RoleName.APPLICANT):
             theme.html('<div class="pf-navlabel">My promotion</div>')
-            st.page_link(pages["section0"], label="0 · Applicant details", icon=":material/badge:")
-            theme.html("".join(
-                f'<div class="pf-soon"><span>{n} · {theme.esc(t)}</span><em>soon</em></div>'
-                for n, t in UPCOMING_SECTIONS))
+            for code, title, icon, _url_path, _render in SECTIONS:
+                st.page_link(pages[f"section{code}"], label=f"{code} · {title}", icon=icon)
         if user.has(RoleName.HOD, RoleName.DEAN, RoleName.CHANCELLOR):
             theme.html('<div class="pf-navlabel">Reviews</div>'
                        '<div class="pf-soon"><span>Cases awaiting my decision</span><em>soon</em></div>')

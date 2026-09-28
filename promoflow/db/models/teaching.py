@@ -2,7 +2,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Boolean, CheckConstraint, Date, ForeignKey, Numeric, SmallInteger, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, Date, ForeignKey, Numeric, SmallInteger, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -63,7 +63,7 @@ class CurriculumContribution(CaseChildMixin, Base):
 
     contribution_type_id: Mapped[int] = mapped_column(ForeignKey("lookup_value.id"))
     course_or_program: Mapped[str] = mapped_column(String(300))
-    changes: Mapped[list[str] | None] = mapped_column(ARRAY(String(60)))  # lookup codes, list 'course_change'
+    changes: Mapped[list[str] | None] = mapped_column(ARRAY(String(60)).with_variant(JSON(), "sqlite"))  # lookup codes, list 'course_change'
     self_classification: Mapped[DevelopmentDepth | None] = mapped_column(pg_enum(DevelopmentDepth))
     description: Mapped[str] = mapped_column(Text)
     approved_by: Mapped[OrgLevel] = mapped_column(pg_enum(OrgLevel))
@@ -98,7 +98,7 @@ class CourseFile(CaseChildMixin, Base):
     course_taught_id: Mapped[int] = mapped_column(ForeignKey("course_taught.id", ondelete="CASCADE"))
     is_coordinator: Mapped[bool] = mapped_column(Boolean)
     kept_in_id: Mapped[int] = mapped_column(ForeignKey("lookup_value.id"))  # TaskStream / Blackboard / Other
-    items: Mapped[list[str]] = mapped_column(ARRAY(String(60)))  # lookup codes, list 'course_file_item'
+    items: Mapped[list[str]] = mapped_column(ARRAY(String(60)).with_variant(JSON(), "sqlite"))  # lookup codes, list 'course_file_item'
 
 
 class TeachingInnovation(CaseChildMixin, Base):

@@ -9,6 +9,7 @@ data/
 .streamlit/secrets.toml
 .idea/
 .vscode/
+.claude/
 node_modules/
 package-lock.json
 

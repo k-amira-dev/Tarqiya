@@ -1,0 +1,45 @@
+"""5E · Journals Classification Form — the tab inside the Section 5 (Research) page."""
+import streamlit as st
+
+from promoflow.db.session import session_scope
+from promoflow.dossier.section5 import classification as s5e
+from promoflow.dossier.section5 import papers as s5p
+from promoflow.ui import theme
+from promoflow.ui.views.section5.papers_tab import CLASS_LABEL
+
+K = "s5e_"
+
+
+def render(paper_rows: list[s5p.PublicationRow], case_id: int, editable: bool) -> None:
+    with st.container(key="card_classification"):
+        theme.card_header("5E", "Journals Classification Form",
+                          "Generated from Section 5A: one row per distinct journal. Review it, sign it, and "
+                          "upload the signed form below.")
+        journals = s5e.distinct_journals(paper_rows)
+        if not journals:
+            theme.html('<div class="pf-note">No journals yet — add papers in 5A first.</div>')
+        else:
+            rows = ""
+            for j in journals:
+                label, cls = CLASS_LABEL[j.classification.journal_class]
+                rows += (f'<div class="pf-check"><div class="ic {cls if cls != "green" else "ok"}">•</div>'
+                        f'<div><b>{theme.esc(j.journal_name)}</b>'
+                        f'<small>ISSN {theme.esc(j.issn or "—")} · {theme.esc(label)}</small></div></div>')
+            theme.html(rows)
+
+        with session_scope() as s:
+            signed = s5e.signed_form(s, case_id)
+        if signed is not None:
+            theme.html(f'<div class="pf-note">Current signed form: {theme.esc(signed.original_filename)}, '
+                      f'uploaded {signed.uploaded_at:%d %b %Y}.</div>')
+        if not editable:
+            return
+        label = "Signed Journals Classification Form" if signed is None else "Replace signed form"
+        upload = st.file_uploader(label, type=["pdf"], key=K + "upload")
+        if upload is not None and st.button("Upload signed form", type="primary", icon=":material/save:",
+                                            key=K + "save"):
+            with session_scope() as s:
+                s5e.save_signed_form(s, case_id, st.session_state["current_user"].id,
+                                    (upload.name, upload.getvalue()))
+            st.session_state["s5_flash"] = "Signed classification form uploaded."
+            st.rerun()

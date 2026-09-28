@@ -54,10 +54,17 @@ class PromotionCase(IdMixin, TimestampMixin, Base):
     previously_rejected: Mapped[bool] = mapped_column(Boolean, default=False)
     rejection_date: Mapped[date | None] = mapped_column(Date)
 
+    # §2 Curriculum Vitae
+    cv_last_updated: Mapped[date | None] = mapped_column(Date)  # month-year, day = 1
+
     # §5.2 declaration (Appendix I, Ninth)
     decl_not_from_thesis: Mapped[bool] = mapped_column(Boolean, default=False)
     decl_after_current_rank: Mapped[bool] = mapped_column(Boolean, default=False)
     application_signed_date: Mapped[date | None] = mapped_column(Date)
+
+    # §9 Conditions Form / §10 Cover Letter (each a signed-file upload plus its date)
+    conditions_signed_date: Mapped[date | None] = mapped_column(Date)
+    cover_letter_signed_date: Mapped[date | None] = mapped_column(Date)
 
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -97,6 +104,8 @@ class CaseDocument(IdMixin, Base):
     entity_table: Mapped[str | None] = mapped_column(String(64))
     entity_id: Mapped[int | None] = mapped_column(BigInteger)
     kind: Mapped[DocumentKind] = mapped_column(pg_enum(DocumentKind))
+    # Disambiguates several files of the same kind on one entity, e.g. degree "certificate" vs "equivalency".
+    slot: Mapped[str | None] = mapped_column(String(60))
     original_filename: Mapped[str] = mapped_column(String(300))
     stored_path: Mapped[str] = mapped_column(String(500))
     mime_type: Mapped[str] = mapped_column(String(100))

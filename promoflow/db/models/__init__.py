@@ -38,4 +38,13 @@ AUTH_TABLES = [
 SQLITE_TABLES = AUTH_TABLES + [
     PolicyVersion.__table__, PromotionCriteria.__table__, ResearchItemCap.__table__, Rubric.__table__,
     RubricItem.__table__, LookupValue.__table__, PromotionCase.__table__, CaseStatusHistory.__table__,
+    CaseDocument.__table__, Publication.__table__, PublicationAuthor.__table__, CreativeWork.__table__,
+    Book.__table__, ConferencePaper.__table__, Patent.__table__, Degree.__table__, RankHistory.__table__,
+    NonAcademicPosition.__table__, FundedProject.__table__, Award.__table__, ScopusEvidence.__table__,
+    Journal.__table__, JournalRanking.__table__, CourseTaught.__table__, PeerObservation.__table__,
+    StudentSatisfaction.__table__, CurriculumContribution.__table__, AdvisingSemester.__table__,
+    CourseFile.__table__, TeachingInnovation.__table__, Supervision.__table__, TeachingDevelopment.__table__,
+    CommitteeMembership.__table__, AdministrativePosition.__table__, WorkshopDelivered.__table__,
+    TrainingDelivered.__table__, PolicyContribution.__table__, CommunityActivity.__table__,
+    RecommendationLetter.__table__,
 ]
