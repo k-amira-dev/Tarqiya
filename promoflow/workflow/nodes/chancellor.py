@@ -1,5 +1,5 @@
 """Chancellor's Office Agent: shortlist of up to 10 external referees with conflict-of-interest checks.
-Owner: the Research/Chancellor teammate. STUB for now. The Chancellor selects; the agent never approves."""
+Owner: Khadidja. STUB for now. The Chancellor selects; the agent never approves."""
 from promoflow.workflow.schemas import CaseState
 
 
