@@ -10,16 +10,21 @@ from promoflow.db.models import CaseDocument, CourseTaught, StudentSatisfaction
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section6.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a student-satisfaction report that the form edits. add() and update() copy exactly these from the
+# form values.
 FIELDS = ["course_taught_id", "respondents", "average_score", "scale_max"]
+# Name of the file slot that holds the evidence file of a student-satisfaction report.
 EVIDENCE_SLOT = "evidence"
 
 
+# A student-satisfaction report together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class SatisfactionRow:
     report: StudentSatisfaction
     evidence: CaseDocument | None
 
 
+# All of this case's student-satisfaction reports, each with its evidence file.
 def load(s: Session, case_id: int) -> list[SatisfactionRow]:
     rows = s.scalars(select(StudentSatisfaction).where(StudentSatisfaction.case_id == case_id)).all()
     return [SatisfactionRow(r, documents.current(s, case_id, "6C", DocumentKind.EVIDENCE,
@@ -28,6 +33,8 @@ def load(s: Session, case_id: int) -> list[SatisfactionRow]:
            for r in rows]
 
 
+# The share of the applicant's courses that have a satisfaction report. Shown to the applicant as a reminder to
+# cover every course.
 def coverage(reports: list[SatisfactionRow], courses: list[CourseTaught]) -> float:
     if not courses:
         return 0.0
@@ -35,6 +42,8 @@ def coverage(reports: list[SatisfactionRow], courses: list[CourseTaught]) -> flo
     return len(covered) / len(courses)
 
 
+# Check one student-satisfaction report's form BEFORE saving. Returns a list of messages for the applicant (an empty
+# list means valid).
 def validate(s: Session, values: dict, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"course_taught_id": "Course", "respondents": "Number of respondents",
@@ -55,6 +64,8 @@ def validate(s: Session, values: dict, has_evidence: bool, evidence_upload=None)
     return errors
 
 
+# Add a student-satisfaction report: refuse if the case is locked, create the row, attach the evidence file, and
+# write an audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     r = StudentSatisfaction(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -68,6 +79,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return r.id
 
 
+# Edit a student-satisfaction report. A new file replaces the old one (the old one is kept as history); the audit
+# log records the values before and after.
 def update(s: Session, user_id: int, report_id: int, values: dict, evidence_upload=None) -> None:
     r = s.get(StudentSatisfaction, report_id)
     case = case_for_entity(s, r.case_id)
@@ -83,6 +96,7 @@ def update(s: Session, user_id: int, report_id: int, values: dict, evidence_uplo
              entity_table="student_satisfaction", entity_id=r.id, before=before, after=audit.snapshot(r, FIELDS))
 
 
+# Delete a student-satisfaction report. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, report_id: int) -> None:
     r = s.get(StudentSatisfaction, report_id)
     case = case_for_entity(s, r.case_id)

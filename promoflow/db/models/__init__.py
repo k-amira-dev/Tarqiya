@@ -1,4 +1,9 @@
-"""Importing this package registers every table on Base.metadata (needed by Alembic and the seed script)."""
+"""Importing this package registers every table on Base.metadata (needed by Alembic and the seed script).
+
+Each file in this folder describes the tables of one area of the system. Tables that belong to ONE application
+(papers, courses, committees, ...) all carry a `case_id` that points to `promotion_case` (case.py), which is the centre
+of the data model. The agents never overwrite what an applicant typed: their results go into the assessment tables.
+"""
 from promoflow.db.models.org import AuthSession, College, Department, User, UserRole
 from promoflow.db.models.reference import (
     Journal, JournalRanking, LookupValue, PolicyChunk, PolicyVersion, PromotionCriteria, ResearchItemCap,
@@ -31,10 +36,13 @@ from promoflow.db.models.referees import (
 from promoflow.db.models.audit import AuditLogEntry
 
 # Tables that only use portable column types; they also run on SQLite, for tests without PostgreSQL.
+# The smallest set of tables needed to log in. Quick tests use it on SQLite.
 AUTH_TABLES = [
     College.__table__, Department.__table__, User.__table__, UserRole.__table__, AuthSession.__table__,
     AuditLogEntry.__table__,
 ]
+# Every table that can be created on SQLite (no PostgreSQL-only column types). The test suite builds exactly these,
+# so the tests run without a PostgreSQL server.
 SQLITE_TABLES = AUTH_TABLES + [
     PolicyVersion.__table__, PromotionCriteria.__table__, ResearchItemCap.__table__, Rubric.__table__,
     RubricItem.__table__, LookupValue.__table__, PromotionCase.__table__, CaseStatusHistory.__table__,

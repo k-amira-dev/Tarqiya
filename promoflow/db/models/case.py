@@ -1,4 +1,8 @@
-"""The promotion case (spec §0, §1), its documents, status history and dossier sections 3–4."""
+"""The promotion case (spec §0, §1), its documents, status history and dossier sections 3–4.
+
+`PromotionCase` is the centre of the data model: every other table about an application points back to it through
+`case_id`. Section 0 of the form lives directly on it; the other sections have their own tables.
+"""
 from datetime import date, datetime
 
 from sqlalchemy import (
@@ -17,6 +21,8 @@ class PromotionCase(IdMixin, TimestampMixin, Base):
     """One application. Section 0 answers are stored here as a snapshot at submission time."""
 
     __tablename__ = "promotion_case"
+    # Rules the DATABASE itself enforces, whatever the Python code does. Example: an exceptional-case request must
+    # come with a justification, so bad data can never be saved.
     __table_args__ = (
         CheckConstraint(
             "NOT exceptional_case OR exceptional_justification IS NOT NULL", name="exceptional_needs_justification"
@@ -24,10 +30,14 @@ class PromotionCase(IdMixin, TimestampMixin, Base):
         CheckConstraint("NOT previously_rejected OR rejection_date IS NOT NULL", name="rejection_needs_date"),
     )
 
+    # Who applied: a link (a 'foreign key') to that person's row in app_user.
     applicant_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"), index=True)
+    # Which version of the policy this case is judged by.
     policy_version_id: Mapped[int] = mapped_column(ForeignKey("policy_version.id"))
     track: Mapped[PromotionTrack] = mapped_column(pg_enum(PromotionTrack))
     academic_year: Mapped[str] = mapped_column(String(9))  # "2026/2027"
+    # Where the case is in its life (see CaseStatus in enums.py). After the draft stage only review_service.py and
+    # the Submit button change it.
     status: Mapped[CaseStatus] = mapped_column(pg_enum(CaseStatus), default=CaseStatus.DRAFT, index=True)
 
     # §4.2 promotion track details
@@ -68,10 +78,13 @@ class PromotionCase(IdMixin, TimestampMixin, Base):
 
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # A relationship is a Python shortcut, not a column: `case.applicant` gives the User object without writing a
+    # query.
     applicant = relationship("User")
     status_history: Mapped[list["CaseStatusHistory"]] = relationship(back_populates="case")
 
 
+# One row per status change: who changed it, when, and why. It gives the full timeline of a case.
 class CaseStatusHistory(IdMixin, Base):
     __tablename__ = "case_status_history"
 
@@ -110,6 +123,7 @@ class CaseDocument(IdMixin, Base):
     stored_path: Mapped[str] = mapped_column(String(500))
     mime_type: Mapped[str] = mapped_column(String(100))
     size_bytes: Mapped[int] = mapped_column(Integer)
+    # A fingerprint of the file's contents. It proves later that the file was not altered, and spots duplicates.
     sha256: Mapped[str] = mapped_column(String(64))
     signed_date: Mapped[date | None] = mapped_column(Date)  # for signed forms and letters
     uploaded_by: Mapped[int] = mapped_column(ForeignKey("app_user.id"))

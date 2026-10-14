@@ -9,16 +9,21 @@ from promoflow.db.models import CaseDocument, TeachingInnovation
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section6.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a teaching innovation that the form edits. add() and update() copy exactly these from the form
+# values.
 FIELDS = ["innovation_type_id", "course_taught_id", "description", "measured_outcome"]
+# Name of the file slot that holds the evidence file of a teaching innovation.
 EVIDENCE_SLOT = "evidence"
 
 
+# A teaching innovation together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class InnovationRow:
     innovation: TeachingInnovation
     evidence: CaseDocument | None
 
 
+# All of this case's teaching innovations, each with its evidence file.
 def load(s: Session, case_id: int) -> list[InnovationRow]:
     rows = s.scalars(select(TeachingInnovation).where(TeachingInnovation.case_id == case_id)).all()
     return [InnovationRow(i, documents.current(s, case_id, "6G", DocumentKind.EVIDENCE,
@@ -27,6 +32,8 @@ def load(s: Session, case_id: int) -> list[InnovationRow]:
            for i in rows]
 
 
+# Check one teaching innovation's form BEFORE saving. Returns a list of messages for the applicant (an empty list
+# means valid).
 def validate(values: dict, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"innovation_type_id": "Type", "course_taught_id": "Course", "description": "Description"}
@@ -38,6 +45,8 @@ def validate(values: dict, has_evidence: bool, evidence_upload=None) -> list[str
     return errors
 
 
+# Add a teaching innovation: refuse if the case is locked, create the row, attach the evidence file, and write an
+# audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     i = TeachingInnovation(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -51,6 +60,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return i.id
 
 
+# Edit a teaching innovation. A new file replaces the old one (the old one is kept as history); the audit log
+# records the values before and after.
 def update(s: Session, user_id: int, innovation_id: int, values: dict, evidence_upload=None) -> None:
     i = s.get(TeachingInnovation, innovation_id)
     case = case_for_entity(s, i.case_id)
@@ -66,6 +77,7 @@ def update(s: Session, user_id: int, innovation_id: int, values: dict, evidence_
              entity_table="teaching_innovation", entity_id=i.id, before=before, after=audit.snapshot(i, FIELDS))
 
 
+# Delete a teaching innovation. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, innovation_id: int) -> None:
     i = s.get(TeachingInnovation, innovation_id)
     case = case_for_entity(s, i.case_id)

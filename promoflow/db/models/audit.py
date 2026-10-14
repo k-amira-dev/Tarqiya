@@ -1,4 +1,7 @@
-"""Append-only audit log: every status change, approval, score change and upload."""
+"""Append-only audit log: every status change, approval, score change and upload.
+
+WHY: so we can always answer "who changed what, and when". Rows are only ever ADDED, never edited or deleted.
+"""
 from datetime import datetime
 
 from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, String, Text, func
@@ -22,6 +25,8 @@ class AuditLogEntry(IdMixin, Base):
     action: Mapped[str] = mapped_column(String(64))  # e.g. "login", "gate_approve", "rubric_change"
     entity_table: Mapped[str | None] = mapped_column(String(64))
     entity_id: Mapped[int | None] = mapped_column(BigInteger)
+    # A snapshot of the data before and after the change (stored as JSON), so any change can be reviewed or
+    # explained later.
     before: Mapped[dict | None] = mapped_column(JSON_DOC)
     after: Mapped[dict | None] = mapped_column(JSON_DOC)
     detail: Mapped[str | None] = mapped_column(Text)

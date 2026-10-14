@@ -11,16 +11,20 @@ from promoflow.db.models import CaseDocument, PeerObservation
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section6.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a peer observation that the form edits. add() and update() copy exactly these from the form values.
 FIELDS = ["course_taught_id", "observer_role_id", "observer_name", "observation_date", "rating", "scale_max"]
+# Name of the file slot that holds the evidence file of a peer observation.
 EVIDENCE_SLOT = "evidence"
 
 
+# A peer observation together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class PeerObservationRow:
     observation: PeerObservation
     evidence: CaseDocument | None
 
 
+# All of this case's peer observations, each with its evidence file.
 def load(s: Session, case_id: int) -> list[PeerObservationRow]:
     rows = s.scalars(select(PeerObservation).where(PeerObservation.case_id == case_id)
                      .order_by(PeerObservation.observation_date.desc())).all()
@@ -30,6 +34,8 @@ def load(s: Session, case_id: int) -> list[PeerObservationRow]:
            for o in rows]
 
 
+# Check one peer observation's form BEFORE saving. Returns a list of messages for the applicant (an empty list means
+# valid).
 def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"course_taught_id": "Course observed", "observer_role_id": "Observer role",
@@ -47,6 +53,8 @@ def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None
     return errors
 
 
+# Add a peer observation: refuse if the case is locked, create the row, attach the evidence file, and write an
+# audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     o = PeerObservation(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -60,6 +68,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return o.id
 
 
+# Edit a peer observation. A new file replaces the old one (the old one is kept as history); the audit log records
+# the values before and after.
 def update(s: Session, user_id: int, observation_id: int, values: dict, evidence_upload=None) -> None:
     o = s.get(PeerObservation, observation_id)
     case = case_for_entity(s, o.case_id)
@@ -75,6 +85,7 @@ def update(s: Session, user_id: int, observation_id: int, values: dict, evidence
              entity_table="peer_observation", entity_id=o.id, before=before, after=audit.snapshot(o, FIELDS))
 
 
+# Delete a peer observation. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, observation_id: int) -> None:
     o = s.get(PeerObservation, observation_id)
     case = case_for_entity(s, o.case_id)

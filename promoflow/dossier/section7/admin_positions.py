@@ -9,16 +9,21 @@ from promoflow.db.models import AdministrativePosition, CaseDocument
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section7.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a administrative position that the form edits. add() and update() copy exactly these from the form
+# values.
 FIELDS = ["position_id", "unit", "date_from", "date_to"]
+# Name of the file slot that holds the evidence file of a administrative position.
 EVIDENCE_SLOT = "evidence"
 
 
+# A administrative position together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class AdminPositionRow:
     position: AdministrativePosition
     evidence: CaseDocument | None
 
 
+# All of this case's administrative positions, each with its evidence file.
 def load(s: Session, case_id: int) -> list[AdminPositionRow]:
     rows = s.scalars(select(AdministrativePosition).where(AdministrativePosition.case_id == case_id)
                      .order_by(AdministrativePosition.date_from.desc())).all()
@@ -28,6 +33,8 @@ def load(s: Session, case_id: int) -> list[AdminPositionRow]:
            for p in rows]
 
 
+# Check one administrative position's form BEFORE saving. Returns a list of messages for the applicant (an empty
+# list means valid).
 def validate(values: dict, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"position_id": "Position", "unit": "Unit", "date_from": "From date"}
@@ -42,6 +49,8 @@ def validate(values: dict, has_evidence: bool, evidence_upload=None) -> list[str
     return errors
 
 
+# Add a administrative position: refuse if the case is locked, create the row, attach the evidence file, and write
+# an audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     p = AdministrativePosition(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -55,6 +64,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return p.id
 
 
+# Edit a administrative position. A new file replaces the old one (the old one is kept as history); the audit log
+# records the values before and after.
 def update(s: Session, user_id: int, position_id: int, values: dict, evidence_upload=None) -> None:
     p = s.get(AdministrativePosition, position_id)
     case = case_for_entity(s, p.case_id)
@@ -70,6 +81,7 @@ def update(s: Session, user_id: int, position_id: int, values: dict, evidence_up
              entity_table="administrative_position", entity_id=p.id, before=before, after=audit.snapshot(p, FIELDS))
 
 
+# Delete a administrative position. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, position_id: int) -> None:
     p = s.get(AdministrativePosition, position_id)
     case = case_for_entity(s, p.case_id)

@@ -14,9 +14,11 @@ from promoflow.db.models import AuditLogEntry, CaseDocument
 from promoflow.dossier import documents
 from promoflow.dossier.section0 import EDITABLE, CaseLocked, active_case
 
+# A CV must be a PDF or a Word document.
 ALLOWED_EXTENSIONS = {"pdf", "docx"}
 
 
+# Everything the Section 2 page needs, gathered in one object by load().
 @dataclass(frozen=True)
 class Section2Context:
     case_id: int | None
@@ -25,10 +27,12 @@ class Section2Context:
     cv_document: CaseDocument | None
 
 
+# The applicant's current CV file, if one was uploaded.
 def _cv_document(s: Session, case_id: int) -> CaseDocument | None:
     return documents.current(s, case_id, "2", DocumentKind.CV)
 
 
+# Read what the page needs. Returns an empty context when the applicant has no case yet.
 def load(s: Session, user_id: int, today: date) -> Section2Context:
     case = active_case(s, user_id)
     if case is None:
@@ -36,6 +40,7 @@ def load(s: Session, user_id: int, today: date) -> Section2Context:
     return Section2Context(case.id, case.status, case.cv_last_updated, _cv_document(s, case.id))
 
 
+# Check the form before saving. Returns a list of messages (empty = valid).
 def validate_section2(cv_last_updated: date | None, has_document: bool, today: date,
                       new_upload: tuple[str, bytes] | None = None) -> list[str]:
     errors = []
@@ -55,6 +60,8 @@ def validate_section2(cv_last_updated: date | None, has_document: bool, today: d
     return errors
 
 
+# Save the 'last updated' date and, if a new file was chosen, replace the CV. Raises CaseLocked if the case cannot
+# be edited.
 def save(s: Session, user_id: int, cv_last_updated: date, today: date,
         upload: tuple[str, bytes] | None = None) -> int:
     case = active_case(s, user_id)

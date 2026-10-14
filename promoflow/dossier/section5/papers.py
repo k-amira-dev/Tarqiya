@@ -14,6 +14,7 @@ from promoflow.dossier import audit, documents
 from promoflow.dossier.section5.common import CaseLocked, case_for_entity, case_for_new_entry
 from promoflow.rules.research import classify_journal
 
+# The columns of a paper that the form edits. add() and update() copy exactly these from the form values.
 FIELDS = [
     "doi", "title", "journal_name", "issn", "publisher", "volume", "issue", "pages", "language",
     "submit_for_promotion", "status", "issue_date", "acceptance_date", "new_since_rejection",
@@ -21,11 +22,14 @@ FIELDS = [
     "with_supervised_student", "at_this_university", "from_thesis", "impact_factor", "disputes_class",
     "dispute_reason",
 ]
+# An ISSN looks like 1234-567X: four digits, a dash, three digits and a digit or X.
 _ISSN = re.compile(r"^\d{4}-\d{3}[\dX]$")
+# Names of the two files a paper can have: the paper itself, and (for accepted papers) the acceptance letter.
 PAPER_SLOT = "paper"
 ACCEPTANCE_SLOT = "acceptance_letter"
 
 
+# How a journal is classified (Class A, Class B or not counted) and which journal and ranking that was based on.
 @dataclass(frozen=True)
 class Classification:
     journal: Journal | None
@@ -33,6 +37,7 @@ class Classification:
     journal_class: JournalClass
 
 
+# A paper together with its authors, its journal classification and its two files, ready for the page to show.
 @dataclass(frozen=True)
 class PublicationRow:
     publication: Publication
@@ -42,12 +47,14 @@ class PublicationRow:
     acceptance_letter: CaseDocument | None
 
 
+# Find the journal in the journal table by its ISSN (print or electronic). None if we do not know it.
 def _lookup_journal(s: Session, issn: str | None) -> Journal | None:
     if not issn:
         return None
     return s.scalar(select(Journal).where((Journal.issn == issn) | (Journal.eissn == issn)))
 
 
+# The journal's most recent yearly ranking (Scopus / SJR data).
 def _latest_ranking(s: Session, journal_id: int | None) -> JournalRanking | None:
     if journal_id is None:
         return None
@@ -55,6 +62,8 @@ def _latest_ranking(s: Session, journal_id: int | None) -> JournalRanking | None
                     .order_by(JournalRanking.year.desc()))
 
 
+# Class A, Class B or not counted. The decision itself is the pure rule in rules/research.py; no ranking on file
+# means not counted.
 def _classification(journal: Journal | None, ranking: JournalRanking | None, p: Publication) -> Classification:
     if ranking is None:
         return Classification(journal, None, JournalClass.NOT_COUNTED)
@@ -63,11 +72,14 @@ def _classification(journal: Journal | None, ranking: JournalRanking | None, p: 
     return Classification(journal, ranking, cls)
 
 
+# Classify one paper (two database queries).
 def classify(s: Session, p: Publication) -> Classification:
     journal = _lookup_journal(s, p.issn)
     return _classification(journal, _latest_ranking(s, journal.id if journal else None), p)
 
 
+# The same result as classify() for many papers at once. Used by load() and the Review & Submit page, because one
+# query for ALL the journals is much faster than two per paper.
 def classify_many(s: Session, pubs: list[Publication]) -> dict[int, Classification]:
     """Same result as `classify` for each paper, but with two queries in total instead of two per paper."""
     issns = {p.issn for p in pubs if p.issn}
@@ -77,6 +89,7 @@ def classify_many(s: Session, pubs: list[Publication]) -> dict[int, Classificati
         for key in (j.issn, j.eissn):
             if key:
                 by_issn[key] = j
+    # Rankings come in ascending year order, so the last one stored for a journal is its newest.
     latest: dict[int, JournalRanking] = {}
     if journals:
         for r in s.scalars(select(JournalRanking).where(JournalRanking.journal_id.in_([j.id for j in journals]))
@@ -89,6 +102,7 @@ def classify_many(s: Session, pubs: list[Publication]) -> dict[int, Classificati
     return out
 
 
+# Attach the paper's two evidence files.
 def _row(s: Session, p: Publication, classification: Classification) -> PublicationRow:
     return PublicationRow(
         p, list(p.authors), classification,
@@ -99,6 +113,8 @@ def _row(s: Session, p: Publication, classification: Classification) -> Publicat
     )
 
 
+# All of this case's papers, with authors, classification and files. `selectinload` fetches every paper's authors in
+# one extra query instead of one per paper.
 def load(s: Session, case_id: int) -> list[PublicationRow]:
     papers = s.scalars(select(Publication).options(selectinload(Publication.authors))
                        .where(Publication.case_id == case_id).order_by(Publication.id)).all()
@@ -106,10 +122,14 @@ def load(s: Session, case_id: int) -> list[PublicationRow]:
     return [_row(s, p, classes[p.id]) for p in papers]
 
 
+# True for None or for a text that is only blank spaces.
 def _is_empty(v) -> bool:
     return (not v.strip()) if isinstance(v, str) else v is None
 
 
+# Check one paper's form BEFORE saving. Returns a list of messages for the applicant (an empty list means valid).
+# What is required depends on the status: a published paper needs volume, issue, date and the paper itself; an
+# accepted one needs the acceptance date and letter.
 def validate(values: dict, today: date, previously_rejected: bool, other_authors: list[str],
             has_paper_file: bool, has_acceptance_letter: bool, paper_upload=None, acceptance_upload=None
             ) -> list[str]:
@@ -140,6 +160,8 @@ def validate(values: dict, today: date, previously_rejected: bool, other_authors
             errors.append("Upload the acceptance letter.")
     if previously_rejected and values.get("new_since_rejection") is None:
         errors.append("State whether this paper is new since your previous rejected application.")
+    # Author list rules: the applicant's position must lie between 1 and the total, and we need one name for every
+    # other author.
     total_authors, author_position = values.get("total_authors"), values.get("author_position")
     if not total_authors or total_authors < 1:
         errors.append("Total number of authors is required.")
@@ -149,6 +171,8 @@ def validate(values: dict, today: date, previously_rejected: bool, other_authors
         errors.append(f"Enter the other {total_authors - 1} author name(s), one per line.")
     if values.get("applicant_role") is None:
         errors.append("Applicant's role is required.")
+    # Anyone claiming to be the main author must say on what basis, because the policy's main-author rule is checked
+    # later.
     if values.get("applicant_role") == AuthorRole.MAIN and values.get("main_author_basis") is None:
         errors.append("State the basis for your main-author claim.")
     if values.get("main_author_basis") == MainAuthorBasis.OTHER and not (values.get("main_author_explanation") or "").strip():
@@ -160,6 +184,7 @@ def validate(values: dict, today: date, previously_rejected: bool, other_authors
     return errors
 
 
+# Add a paper: create it, its author list and its files, then write an audit-log entry.
 def add(s: Session, user_id: int, values: dict, other_authors: list[str],
        paper_upload: tuple[str, bytes] | None, acceptance_upload: tuple[str, bytes] | None) -> int:
     case = case_for_new_entry(s, user_id)
@@ -182,6 +207,8 @@ def add(s: Session, user_id: int, values: dict, other_authors: list[str],
     return p.id
 
 
+# Rewrite the author list from scratch: the applicant's name goes at their stated position, and the other names fill
+# the remaining positions in order.
 def _save_authors(s: Session, p: Publication, user_id: int, author_position: int, total_authors: int,
                   other_authors: list[str]) -> None:
     for a in list(p.authors):
@@ -195,6 +222,7 @@ def _save_authors(s: Session, p: Publication, user_id: int, author_position: int
                                 is_applicant=(position == author_position)))
 
 
+# Edit a paper (same steps as add, plus the audit log's before and after).
 def update(s: Session, user_id: int, publication_id: int, values: dict, other_authors: list[str],
           paper_upload: tuple[str, bytes] | None = None, acceptance_upload: tuple[str, bytes] | None = None) -> None:
     p = s.get(Publication, publication_id)
@@ -218,6 +246,7 @@ def update(s: Session, user_id: int, publication_id: int, values: dict, other_au
              entity_id=p.id, before=before, after=audit.snapshot(p, FIELDS))
 
 
+# Delete a paper. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, publication_id: int) -> None:
     p = s.get(Publication, publication_id)
     case = case_for_entity(s, p.case_id)

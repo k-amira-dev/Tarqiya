@@ -11,17 +11,21 @@ from promoflow.db.models import CaseDocument, ConferencePaper
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section5.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a conference paper that the form edits. add() and update() copy exactly these from the form values.
 FIELDS = ["title", "conference_title", "organizer", "conference_date", "place", "pages",
          "main_or_sole_author", "scopus_indexed", "doi"]
+# Name of the file slot that holds the evidence file of a conference paper.
 EVIDENCE_SLOT = "evidence"
 
 
+# A conference paper together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class ConferencePaperRow:
     paper: ConferencePaper
     evidence: CaseDocument | None
 
 
+# All of this case's conference papers, each with its evidence file.
 def load(s: Session, case_id: int) -> list[ConferencePaperRow]:
     papers = s.scalars(select(ConferencePaper).where(ConferencePaper.case_id == case_id)
                        .order_by(ConferencePaper.id)).all()
@@ -31,6 +35,8 @@ def load(s: Session, case_id: int) -> list[ConferencePaperRow]:
            for p in papers]
 
 
+# Check one conference paper's form BEFORE saving. Returns a list of messages for the applicant (an empty list means
+# valid).
 def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"title": "Paper title", "conference_title": "Conference title", "organizer": "Name of organizer",
@@ -49,6 +55,8 @@ def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None
     return errors
 
 
+# Add a conference paper: refuse if the case is locked, create the row, attach the evidence file, and write an
+# audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     p = ConferencePaper(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -62,6 +70,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return p.id
 
 
+# Edit a conference paper. A new file replaces the old one (the old one is kept as history); the audit log records
+# the values before and after.
 def update(s: Session, user_id: int, paper_id: int, values: dict, evidence_upload=None) -> None:
     p = s.get(ConferencePaper, paper_id)
     case = case_for_entity(s, p.case_id)
@@ -77,6 +87,7 @@ def update(s: Session, user_id: int, paper_id: int, values: dict, evidence_uploa
              entity_table="conference_paper", entity_id=p.id, before=before, after=audit.snapshot(p, FIELDS))
 
 
+# Delete a conference paper. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, paper_id: int) -> None:
     p = s.get(ConferencePaper, paper_id)
     case = case_for_entity(s, p.case_id)

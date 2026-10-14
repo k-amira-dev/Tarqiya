@@ -1,5 +1,9 @@
 """Saves an agent's `AgentOutput` into the database tables (shared by every agent, so each one only has to return
-the agreed format). Computed results go here and never overwrite what the applicant entered."""
+the agreed format). Computed results go here and never overwrite what the applicant entered.
+
+Why a separate file? An agent's job is to JUDGE, not to know the database layout. Every agent returns the same
+`AgentOutput` (see schemas.py), and this one function turns it into rows: agent_run, agent_assessment,
+criterion_result, item_result, rubric_score, claim and flag."""
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -15,6 +19,7 @@ from promoflow.workflow.schemas import AgentOutput
 
 
 def _dec(value: float | None) -> Decimal | None:
+    """The database stores exact decimals; agents work with floats. Going through str() avoids 0.1+0.2 style noise."""
     return None if value is None else Decimal(str(value))
 
 
@@ -23,9 +28,11 @@ def _save_rubric(s: Session, case_id: int, run_id: int, out: AgentOutput) -> Non
     suggestion and clears the HoD's and Dean's earlier points, because they approved a different dossier."""
     policy_version_id = s.get(PromotionCase, case_id).policy_version_id
     for line in out.rubric:
+        # Find the official form line ("item 3 of the teaching rubric") this suggestion belongs to.
         item = s.scalar(select(RubricItem).join(Rubric, Rubric.id == RubricItem.rubric_id).where(
             Rubric.policy_version_id == policy_version_id, Rubric.code == RubricCode(line.rubric),
             RubricItem.item_no == line.item_no))
+        # Update the row if this case already has one for the item, otherwise create it (an "upsert").
         row = s.scalar(select(RubricScore).where(RubricScore.case_id == case_id,
                                                  RubricScore.rubric_item_id == item.id))
         if row is None:
@@ -36,22 +43,26 @@ def _save_rubric(s: Session, case_id: int, run_id: int, out: AgentOutput) -> Non
         row.suggestion_basis = line.basis
         row.suggestion_rationale = line.rationale
         row.confidence = line.confidence
+        # Chained assignment: set all of these to None at once (the reviewers must score the new suggestion afresh).
         row.hod_points = row.hod_user_id = row.hod_at = None
         row.dean_points = row.dean_user_id = row.dean_at = row.change_reason = None
 
 
 def save_output(s: Session, case_id: int, out: AgentOutput) -> int:
-    """One agent_run + agent_assessment with its criteria, items, claims and flags. Returns the assessment id.
-    Rubric lines (Teaching/Service) are saved by those agents once the rubric_score mapping is written."""
+    """One agent_run + agent_assessment with its criteria, items, rubric lines, claims and flags.
+    Returns the assessment id. `s` is an open database session; the caller commits (session_scope does it)."""
+    # agent_run = "this agent ran once, at this time, with this model and prompt version" (for reproducibility).
     run = AgentRun(case_id=case_id, component=out.component, status=RunStatus.SUCCEEDED,
                    finished_at=datetime.now(timezone.utc), model_name=out.model_name,
                    prompt_version=out.prompt_version)
     s.add(run)
-    s.flush()
+    s.flush()        # flush = send to the database now so `run.id` exists, without committing yet
+    # agent_assessment = the result of that run: the verdict and the written narrative.
     assessment = AgentAssessment(case_id=case_id, agent_run_id=run.id, component=out.component,
                                  verdict=out.verdict, narrative=out.narrative)
     s.add(assessment)
     s.flush()
+    # The detail rows all point back at the assessment through `assessment_id`.
     for c in out.criteria:
         s.add(CriterionResult(assessment_id=assessment.id, criterion_key=c.key, label=c.label[:200],
                               required_value=_dec(c.required), actual_value=_dec(c.actual), passed=c.passed,

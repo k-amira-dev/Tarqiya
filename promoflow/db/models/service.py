@@ -1,4 +1,8 @@
-"""§7 University & community service entries (Appendix F evidence)."""
+"""§7 University & community service entries (Appendix F evidence).
+
+Each table feeds a line of the Appendix F rubric, which the Service Agent scores (see workflow/nodes/service.py).
+Community activities have no line of their own on the form, so the agent decides where each one counts.
+"""
 from datetime import date
 from decimal import Decimal
 

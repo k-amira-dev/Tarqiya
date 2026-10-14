@@ -13,7 +13,16 @@ only the database, so it is as quick as any other page query.
 
 A case can be submitted more than once (after a revision). Each submission is its own run ("v1", "v2", ...), so a
 new run never inherits the old results.
-"""
+
+HOW TO READ THIS FILE (for beginners)
+-------------------------------------
+Think of the agents as a slow worker in the back room and the web pages as a counter. The page must never stand and
+wait for the worker, so this file does three jobs:
+  1. It hands the work to a background thread ("start_review", "resume") and returns immediately.
+  2. When the worker stops (it finished, or it paused waiting for a human), "_sync" writes down in the database where
+     things stand: the report, and the new case status.
+  3. It answers the page's questions ("get_status", "waiting_cases", "case_detail") by reading the database only.
+It also enforces WHO may do WHAT (a HoD may only decide for their own department, and so on)."""
 import logging
 import threading
 from collections.abc import Iterable
@@ -34,19 +43,22 @@ from promoflow.workflow.graph import build_graph, postgres_checkpointer
 
 log = logging.getLogger(__name__)
 
+# While the graph is paused at a gate, which case status do we show, and who is it waiting for? Both directions:
 WAITING_FOR = {CaseStatus.HOD_REVIEW: "hod", CaseStatus.DEAN_REVIEW: "dean",
                CaseStatus.REFEREE_SELECTION: "chancellor"}
 GATE_STATUS = {"hod": CaseStatus.HOD_REVIEW, "dean": CaseStatus.DEAN_REVIEW,
                "chancellor": CaseStatus.REFEREE_SELECTION}
+# When the graph ENDS, graph.py records how in `final_status`; this table turns that into a case status.
 FINAL_STATUS = {"not_eligible": CaseStatus.NOT_ELIGIBLE, "returned_by_hod": CaseStatus.RETURNED_FOR_REVISION,
                 "returned_by_dean": CaseStatus.RETURNED_FOR_REVISION,
                 "referees_selected": CaseStatus.AWAITING_REFEREE_REPORTS}
 
-_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="review")
-_lock = threading.Lock()
-_graph = None
+# ---- shared state of this module (one copy per running program) ----
+_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="review")   # at most 2 cases are processed at once
+_lock = threading.Lock()         # protects the variables below when several threads touch them
+_graph = None                    # the compiled graph, built on first use (see _get_graph)
 _busy: set[int] = set()          # cases with a run in progress in this process
-_errors: dict[int, str] = {}
+_errors: dict[int, str] = {}     # the last error message per case, so the page can show it
 
 
 class ReviewError(Exception):
@@ -55,6 +67,7 @@ class ReviewError(Exception):
 
 @dataclass(frozen=True)
 class ReviewStatus:
+    """What a page needs to know about a case's review. `frozen=True` means it cannot be changed after creation."""
     case_status: CaseStatus
     waiting_for: str | None       # "hod" | "dean" | "chancellor" | None
     running: bool                 # agents are working right now
@@ -69,6 +82,7 @@ def configure(checkpointer=None) -> None:
 
 
 def _get_graph():
+    """Return the compiled graph, building it the first time. The lock stops two threads building it at once."""
     with _lock:
         if _graph is None:
             configure()
@@ -76,15 +90,20 @@ def _get_graph():
 
 
 def _submissions(s, case_id: int) -> int:
+    """How many times this case has been submitted (at least 1). Used as the run's version number."""
     return max(s.scalar(select(func.count()).select_from(CaseStatusHistory).where(
         CaseStatusHistory.case_id == case_id, CaseStatusHistory.to_status == CaseStatus.SUBMITTED)) or 0, 1)
 
 
 def _config(case_id: int, version: int) -> dict:
+    """LangGraph identifies one run by a `thread_id`. Ours is "case-<id>-v<version>", so a resubmitted case gets a
+    brand-new run (v2) that does not inherit the results of the old one (v1)."""
     return {"configurable": {"thread_id": f"case-{case_id}-v{version}"}}
 
 
 def _set_status(s, case: PromotionCase, new: CaseStatus, note: str, user_id: int | None = None) -> None:
+    """Change a case's status AND leave a trail: one row in the status history and one in the audit log.
+    `user_id=None` means the system did it (not a person)."""
     if case.status == new:
         return
     s.add(CaseStatusHistory(case_id=case.id, from_status=case.status, to_status=new, changed_by=user_id, note=note))
@@ -95,19 +114,23 @@ def _set_status(s, case: PromotionCase, new: CaseStatus, note: str, user_id: int
 
 def _sync(case_id: int, version: int) -> None:
     """After the graph stops: save the report and move the case to the status that matches where it stopped."""
+    # Ask LangGraph where the run is now: its state, and which tasks are waiting (interrupted at a gate).
     snapshot = _get_graph().get_state(_config(case_id, version))
     values = snapshot.values
     gate = next((t.interrupts[0].value["gate"] for t in snapshot.tasks if t.interrupts), None)
     with db_session.session_scope() as s:
         case = s.get(PromotionCase, case_id)
         report = values.get("report")
+        # Save the Report Builder's report once per run (the unique version number prevents duplicates).
         if report and not s.scalar(select(CaseReport.id).where(CaseReport.case_id == case_id,
                                                                 CaseReport.version == version)):
             s.add(CaseReport(case_id=case_id, version=version, overall_pass=report.get("overall_pass"),
                              content=report))
         if gate:
+            # Paused at a gate: the case now waits for that reviewer.
             _set_status(s, case, GATE_STATUS[gate], f"Waiting for {gate}")
         elif values.get("final_status") in FINAL_STATUS:
+            # The run ended: translate how it ended into a case status.
             final = values["final_status"]
             new = FINAL_STATUS[final]
             verdict = values.get("results", {}).get("eligibility", {}).get("verdict")
@@ -117,6 +140,9 @@ def _sync(case_id: int, version: int) -> None:
 
 
 def _job(case_id: int, version: int, payload) -> None:
+    """The work that runs in the background thread: run the graph until it stops, then record where it stopped.
+
+    `payload` is either the starting input (a new run) or a Command(resume=...) that continues a paused run."""
     try:
         _get_graph().invoke(payload, _config(case_id, version))
         _sync(case_id, version)
@@ -125,23 +151,25 @@ def _job(case_id: int, version: int, payload) -> None:
         log.exception("Review of case %s failed", case_id)
         _errors[case_id] = f"{type(e).__name__}: {e}"
         try:
+            # Also leave a flag in the database, so the failure is visible even after the program restarts.
             with db_session.session_scope() as s:
                 s.add(Flag(case_id=case_id, severity=FlagSeverity.NEEDS_HUMAN, code="workflow_error",
                            message=f"The review stopped with an error: {_errors[case_id]}"))
         except Exception:
             log.exception("Could not record the workflow error for case %s", case_id)
     finally:
-        _busy.discard(case_id)
+        _busy.discard(case_id)      # always runs, success or not: the case may be processed again
 
 
 def _launch(case_id: int, version: int, payload, wait: bool) -> Future:
+    """Hand a job to the background thread. Refuses if this case is already being processed (double click)."""
     with _lock:
         if case_id in _busy:
             raise ReviewError("This case is already being processed. Please wait a moment.")
         _busy.add(case_id)
     future = _pool.submit(_job, case_id, version, payload)
     if wait:
-        future.result()
+        future.result()      # block until the job finishes; only tests use this
     return future
 
 
@@ -176,13 +204,14 @@ def resume(case_id: int, user_id: int, gate: Gate, outcome: GateOutcome, comment
     for the next gate. Returning a case for revision needs the section codes and a comment."""
     outcome = GateOutcome(outcome)
     gate = Gate(gate)
-    comment = (comment or "").strip() or None
+    comment = (comment or "").strip() or None     # blank comment -> None
     if outcome == GateOutcome.RETURN_FOR_REVISION and (not sections or not comment):
         raise ReviewError("Name the sections to revise and write a comment before returning a case.")
     with db_session.session_scope() as s:
         case = s.get(PromotionCase, case_id)
         if case is None:
             raise ReviewError("Case not found.")
+        # Three safety checks, in this order: right moment, right person, then record the decision.
         if WAITING_FOR.get(case.status) != gate.value:
             raise ReviewError("This case is not waiting for your decision.")
         if not _has_role(s, user_id, RoleName(gate.value), case):
@@ -194,6 +223,7 @@ def resume(case_id: int, user_id: int, gate: Gate, outcome: GateOutcome, comment
         s.add(AuditLogEntry(user_id=user_id, case_id=case_id, action=f"{gate.value}_decision",
                             entity_table="promotion_case", entity_id=case_id, before=None,
                             after={"outcome": outcome.value, "sections": revise}))
+    # Command(resume=...) is how LangGraph delivers the decision to the paused interrupt() call in graph.py.
     payload = Command(resume={"outcome": outcome.value, "comment": comment, "sections": sections or []})
     return _launch(case_id, version, payload, wait)
 
@@ -234,11 +264,12 @@ def get_status(case_id: int) -> ReviewStatus:
 # (Dean). Plain queries, no agent involved.
 
 class NotAllowed(Exception):
-    pass
+    """Raised when a reviewer asks for a case that is not theirs to see."""
 
 
 @dataclass(frozen=True)
 class WaitingCase:
+    """One row of the reviewer's list."""
     case_id: int
     applicant_name: str
     department: str
@@ -249,6 +280,7 @@ class WaitingCase:
 
 @dataclass(frozen=True)
 class DecisionRow:
+    """An earlier decision on the case (shown to the next reviewer)."""
     gate: Gate
     outcome: GateOutcome
     comment: str | None
@@ -259,6 +291,7 @@ class DecisionRow:
 
 @dataclass(frozen=True)
 class CaseDetail:
+    """Everything the review page shows for one case."""
     case_id: int
     applicant_name: str
     department: str
@@ -271,6 +304,11 @@ class CaseDetail:
 
 
 def _waiting_query(grants: Iterable[RoleGrant]):
+    """Build the database query for "cases this reviewer may see".
+
+    Each role the person holds adds one allowed combination: a HoD sees cases at the HoD gate whose applicant is in
+    their department; a Dean sees cases at the Dean gate whose applicant is in their college. `or_` joins them.
+    Returns None when the person holds no reviewer role at all."""
     scopes = []
     for g in grants:
         if g.role == RoleName.HOD and g.department_id is not None:
@@ -290,6 +328,7 @@ def _gate_of(case: PromotionCase) -> str:
 
 
 def waiting_cases(s, grants: Iterable[RoleGrant]) -> list[WaitingCase]:
+    """The list on the Reviews page. `s` is a database session, `grants` are the roles the logged-in user holds."""
     query = _waiting_query(grants)
     if query is None:
         return []
@@ -299,6 +338,8 @@ def waiting_cases(s, grants: Iterable[RoleGrant]) -> list[WaitingCase]:
 
 def case_detail(s, case_id: int, grants: Iterable[RoleGrant]) -> CaseDetail:
     """One waiting case in full. Raises NotAllowed unless it is waiting at one of the reviewer's own gates."""
+    # Re-using the same query (plus "and this case id") means the permission check cannot be forgotten or bypassed
+    # by typing a case number: a case outside the reviewer's scope simply returns no row.
     query = _waiting_query(grants)
     row = s.execute(query.where(PromotionCase.id == case_id)).first() if query is not None else None
     if row is None:

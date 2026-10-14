@@ -1,3 +1,7 @@
+"""Section 3 (degrees): add, update and delete a degree with its certificate files, and the locked case. Each test is
+a small function whose name says what it checks. They use `app_env` (see conftest.py), a fresh temporary database
+seeded with reference data and test accounts, so no test depends on another and none touches the real database.
+"""
 from datetime import date
 
 import pytest
@@ -8,7 +12,9 @@ from promoflow.db.models import CaseDocument, Degree, PromotionCase, User
 from promoflow.dossier import section0 as s0
 from promoflow.dossier import section3 as s3
 
+# A fixed 'today', so the tests give the same answer on any day of the year.
 TODAY = date(2026, 9, 25)
+# Valid Section 0 answers. Every test starts from a draft case built with these.
 S0_VALUES = {
     "academic_year": "2026/2027", "track": PromotionTrack.TO_ASSOCIATE, "specialization": "Computer Science",
     "fine_specialization": "Machine Learning", "research_keywords": [],
@@ -24,10 +30,12 @@ PHD = {
 }
 
 
+# The seeded test applicant (created by db/seed.py), looked up by email.
 def applicant(s):
     return s.scalar(select(User).where(User.email == "applicant@promoflow.test"))
 
 
+# Create the draft case from S0_VALUES and return its id (most tests need a case to attach entries to).
 def _case(s):
     return s0.save(s, applicant(s).id, dict(S0_VALUES), TODAY)
 

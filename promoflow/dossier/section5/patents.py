@@ -10,16 +10,20 @@ from promoflow.db.models import CaseDocument, Patent
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section5.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a patent that the form edits. add() and update() copy exactly these from the form values.
 FIELDS = ["title", "patent_number", "office_id", "status", "grant_date", "inventors"]
+# Name of the file slot that holds the evidence file of a patent.
 EVIDENCE_SLOT = "evidence"
 
 
+# A patent together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class PatentRow:
     patent: Patent
     evidence: CaseDocument | None
 
 
+# All of this case's patents, each with its evidence file.
 def load(s: Session, case_id: int) -> list[PatentRow]:
     patents = s.scalars(select(Patent).where(Patent.case_id == case_id).order_by(Patent.id)).all()
     return [PatentRow(p, documents.current(s, case_id, "5G", DocumentKind.EVIDENCE, entity_table="patent",
@@ -27,6 +31,7 @@ def load(s: Session, case_id: int) -> list[PatentRow]:
            for p in patents]
 
 
+# Check one patent's form BEFORE saving. Returns a list of messages for the applicant (an empty list means valid).
 def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"title": "Patent title", "patent_number": "Patent number", "office_id": "Patent office",
@@ -44,6 +49,8 @@ def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None
     return errors
 
 
+# Add a patent: refuse if the case is locked, create the row, attach the evidence file, and write an audit-log
+# entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     p = Patent(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -57,6 +64,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return p.id
 
 
+# Edit a patent. A new file replaces the old one (the old one is kept as history); the audit log records the values
+# before and after.
 def update(s: Session, user_id: int, patent_id: int, values: dict, evidence_upload=None) -> None:
     p = s.get(Patent, patent_id)
     case = case_for_entity(s, p.case_id)
@@ -72,6 +81,7 @@ def update(s: Session, user_id: int, patent_id: int, values: dict, evidence_uplo
              entity_id=p.id, before=before, after=audit.snapshot(p, FIELDS))
 
 
+# Delete a patent. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, patent_id: int) -> None:
     p = s.get(Patent, patent_id)
     case = case_for_entity(s, p.case_id)

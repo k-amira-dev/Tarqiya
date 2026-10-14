@@ -14,6 +14,7 @@ from promoflow.dossier.section6 import (
 )
 
 
+# Everything the Section 6 page needs: one list per kind of teaching entry.
 @dataclass(frozen=True)
 class Section6Context:
     case_id: int | None
@@ -30,6 +31,7 @@ class Section6Context:
     registrar_report: object
 
 
+# Read all of Section 6 for the page, with the independent readers running together.
 def load(s: Session, user_id: int) -> Section6Context:
     case = active_case(s, user_id)
     if case is None:

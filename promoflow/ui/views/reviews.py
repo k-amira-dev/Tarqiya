@@ -1,11 +1,11 @@
 """Reviews – the Head of Department's and the Dean's pages. Cases waiting at their gate, the Report Builder's report,
-and the decision. Nothing here runs an agent: the decision button calls promoflow.workflow.service.resume()."""
+and the decision. Nothing here runs an agent: the decision button calls promoflow.workflow.review_service.resume()."""
 import streamlit as st
 
 from promoflow.db.enums import Gate, GateOutcome, RoleName
 from promoflow.db.session import session_scope
 from promoflow.ui import cache, theme
-from promoflow.workflow import service
+from promoflow.workflow import review_service
 
 K = "rev_"
 CASE_KEY = K + "case"
@@ -46,7 +46,7 @@ def _list(user) -> None:
         cache.clear()
         st.rerun()
     with session_scope() as s:
-        cases = service.waiting_cases(s, user.roles)
+        cases = review_service.waiting_cases(s, user.roles)
     if not cases:
         st.info("No cases are waiting for your decision.", icon=":material/inbox:")
         return
@@ -66,8 +66,8 @@ def _detail(user, case_id: int) -> None:
         st.session_state.pop(CASE_KEY)
         st.rerun()
     try:
-        d = cache.load_cached(f"pfc:review:{case_id}", lambda s: service.case_detail(s, case_id, user.roles))
-    except service.NotAllowed as e:
+        d = cache.load_cached(f"pfc:review:{case_id}", lambda s: review_service.case_detail(s, case_id, user.roles))
+    except review_service.NotAllowed as e:
         st.session_state.pop(CASE_KEY, None)
         st.warning(str(e))
         return
@@ -166,10 +166,10 @@ def _decision_form(user, d) -> None:
         if st.button("Record decision", type="primary", icon=":material/gavel:", key=K + "submit",
                      disabled=not confirmed):
             try:
-                service.resume(d.case_id, user.id, gate,
+                review_service.resume(d.case_id, user.id, gate,
                                GateOutcome.RETURN_FOR_REVISION if returning else GateOutcome.APPROVE,
                                comment, sections)
-            except service.ReviewError as e:
+            except review_service.ReviewError as e:
                 st.error(str(e))
                 return
             for key in ("choice", "sections", "comment", "confirm"):

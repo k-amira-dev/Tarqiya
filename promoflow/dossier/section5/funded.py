@@ -11,16 +11,21 @@ from promoflow.db.models import CaseDocument, FundedProject
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section5.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a funded research project that the form edits. add() and update() copy exactly these from the form
+# values.
 FIELDS = ["title", "funding_body", "funder_type_id", "role", "amount", "currency", "start_date", "end_date", "status"]
+# Name of the file slot that holds the evidence file of a funded research project.
 EVIDENCE_SLOT = "evidence"
 
 
+# A funded research project together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class FundedProjectRow:
     project: FundedProject
     evidence: CaseDocument | None
 
 
+# All of this case's funded projects, each with its evidence file.
 def load(s: Session, case_id: int) -> list[FundedProjectRow]:
     projects = s.scalars(select(FundedProject).where(FundedProject.case_id == case_id)
                          .order_by(FundedProject.id)).all()
@@ -30,6 +35,8 @@ def load(s: Session, case_id: int) -> list[FundedProjectRow]:
            for p in projects]
 
 
+# Check one funded research project's form BEFORE saving. Returns a list of messages for the applicant (an empty
+# list means valid).
 def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"title": "Project title", "funding_body": "Funding body", "funder_type_id": "Funder type",
@@ -44,6 +51,8 @@ def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None
     return errors
 
 
+# Add a funded research project: refuse if the case is locked, create the row, attach the evidence file, and write
+# an audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     p = FundedProject(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -57,6 +66,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return p.id
 
 
+# Edit a funded research project. A new file replaces the old one (the old one is kept as history); the audit log
+# records the values before and after.
 def update(s: Session, user_id: int, project_id: int, values: dict, evidence_upload=None) -> None:
     p = s.get(FundedProject, project_id)
     case = case_for_entity(s, p.case_id)
@@ -72,6 +83,7 @@ def update(s: Session, user_id: int, project_id: int, values: dict, evidence_upl
              entity_id=p.id, before=before, after=audit.snapshot(p, FIELDS))
 
 
+# Delete a funded research project. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, project_id: int) -> None:
     p = s.get(FundedProject, project_id)
     case = case_for_entity(s, p.case_id)

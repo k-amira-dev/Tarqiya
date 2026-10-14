@@ -11,16 +11,21 @@ from promoflow.db.models import CaseDocument, TeachingDevelopment
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section6.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a teaching-development activity that the form edits. add() and update() copy exactly these from the
+# form values.
 FIELDS = ["title", "format", "topic_id", "organizer", "activity_date", "hours"]
+# Name of the file slot that holds the evidence file of a teaching-development activity.
 EVIDENCE_SLOT = "certificate"
 
 
+# A teaching-development activity together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class DevelopmentRow:
     activity: TeachingDevelopment
     certificate: CaseDocument | None
 
 
+# All of this case's teaching-development activities, each with its evidence file.
 def load(s: Session, case_id: int) -> list[DevelopmentRow]:
     rows = s.scalars(select(TeachingDevelopment).where(TeachingDevelopment.case_id == case_id)
                      .order_by(TeachingDevelopment.activity_date.desc())).all()
@@ -30,6 +35,8 @@ def load(s: Session, case_id: int) -> list[DevelopmentRow]:
            for d in rows]
 
 
+# Check one teaching-development activity's form BEFORE saving. Returns a list of messages for the applicant (an
+# empty list means valid).
 def validate(values: dict, today: date, has_certificate: bool, upload=None) -> list[str]:
     errors = []
     required = {"title": "Title", "format": "Type", "topic_id": "Topic", "organizer": "Organizer",
@@ -44,6 +51,8 @@ def validate(values: dict, today: date, has_certificate: bool, upload=None) -> l
     return errors
 
 
+# Add a teaching-development activity: refuse if the case is locked, create the row, attach the evidence file, and
+# write an audit-log entry.
 def add(s: Session, user_id: int, values: dict, upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     d = TeachingDevelopment(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -57,6 +66,8 @@ def add(s: Session, user_id: int, values: dict, upload: tuple[str, bytes]) -> in
     return d.id
 
 
+# Edit a teaching-development activity. A new file replaces the old one (the old one is kept as history); the audit
+# log records the values before and after.
 def update(s: Session, user_id: int, activity_id: int, values: dict, upload=None) -> None:
     d = s.get(TeachingDevelopment, activity_id)
     case = case_for_entity(s, d.case_id)
@@ -72,6 +83,7 @@ def update(s: Session, user_id: int, activity_id: int, values: dict, upload=None
              entity_table="teaching_development", entity_id=d.id, before=before, after=audit.snapshot(d, FIELDS))
 
 
+# Delete a teaching-development activity. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, activity_id: int) -> None:
     d = s.get(TeachingDevelopment, activity_id)
     case = case_for_entity(s, d.case_id)

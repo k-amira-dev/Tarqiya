@@ -1,4 +1,10 @@
-"""What the agents, the Report Builder and the human gates produce."""
+"""What the agents, the Report Builder and the human gates produce.
+
+How the tables connect: an AgentRun (one execution) has one AgentAssessment (its result), which owns many
+CriterionResult rows (the report table), ItemResult rows (per-entry verdicts), Claim rows (statements and the records
+they cite) and, for Teaching and Service, RubricScore rows (suggested, then HoD and Dean points). Flags and gate
+decisions belong to the case. All of this is written by workflow/persist.py and review_service.py.
+"""
 from datetime import datetime
 from decimal import Decimal
 

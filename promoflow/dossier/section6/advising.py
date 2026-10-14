@@ -9,17 +9,22 @@ from promoflow.db.models import AdvisingSemester, CaseDocument
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section6.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a advising semester that the form edits. add() and update() copy exactly these from the form
+# values.
 FIELDS = ["academic_year", "semester", "advisees", "meetings_held", "on_warning_at_start", "cleared_warning",
          "improved_gpa", "notes"]
+# Name of the file slot that holds the evidence file of a advising semester.
 EVIDENCE_SLOT = "evidence"
 
 
+# A advising semester together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class AdvisingRow:
     semester: AdvisingSemester
     evidence: CaseDocument | None
 
 
+# All of this case's advising semesters, each with its evidence file.
 def load(s: Session, case_id: int) -> list[AdvisingRow]:
     rows = s.scalars(select(AdvisingSemester).where(AdvisingSemester.case_id == case_id)
                      .order_by(AdvisingSemester.academic_year.desc())).all()
@@ -28,6 +33,8 @@ def load(s: Session, case_id: int) -> list[AdvisingRow]:
            for a in rows]
 
 
+# Check one advising semester's form BEFORE saving. Returns a list of messages for the applicant (an empty list
+# means valid).
 def validate(values: dict, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"academic_year": "Academic year", "semester": "Semester", "advisees": "Number of advisees",
@@ -47,6 +54,8 @@ def validate(values: dict, has_evidence: bool, evidence_upload=None) -> list[str
     return errors
 
 
+# Add a advising semester: refuse if the case is locked, create the row, attach the evidence file, and write an
+# audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     a = AdvisingSemester(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -60,6 +69,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return a.id
 
 
+# Edit a advising semester. A new file replaces the old one (the old one is kept as history); the audit log records
+# the values before and after.
 def update(s: Session, user_id: int, semester_id: int, values: dict, evidence_upload=None) -> None:
     a = s.get(AdvisingSemester, semester_id)
     case = case_for_entity(s, a.case_id)
@@ -75,6 +86,7 @@ def update(s: Session, user_id: int, semester_id: int, values: dict, evidence_up
              entity_table="advising_semester", entity_id=a.id, before=before, after=audit.snapshot(a, FIELDS))
 
 
+# Delete a advising semester. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, semester_id: int) -> None:
     a = s.get(AdvisingSemester, semester_id)
     case = case_for_entity(s, a.case_id)

@@ -13,6 +13,7 @@ from promoflow.dossier.section7 import (
 )
 
 
+# Everything the Section 7 page needs: one list per kind of service entry.
 @dataclass(frozen=True)
 class Section7Context:
     case_id: int | None
@@ -25,6 +26,7 @@ class Section7Context:
     community: list["community.CommunityActivityRow"]
 
 
+# Read all of Section 7 for the page, with the independent readers running together.
 def load(s: Session, user_id: int) -> Section7Context:
     case = active_case(s, user_id)
     if case is None:

@@ -43,7 +43,7 @@ database matches the code. If you change a table in `promoflow/db/models/`, add 
 - **`workflow/`**: the agents and the process that connects them.
   - `graph.py` is the flow itself: Eligibility, then Research, Teaching and Service in parallel, then the Report
     Builder, then the Head of Department and Dean approvals, then the Chancellor's referee selection.
-  - `service.py` is the only thing the pages call to start or continue a review (`start_review`, `resume`,
+  - `review_service.py` is the only thing the pages call to start or continue a review (`start_review`, `resume`,
     `get_status`). It runs the graph in the background and keeps the case status up to date.
   - `schemas.py` defines the format every agent must return, and the data that travels through the graph.
   - `persist.py` saves an agent's result into the database tables, `verify.py` checks that every claim cites real
@@ -96,6 +96,7 @@ team lead for the connection string privately, never share it on GitHub or in a 
 ```
 DATABASE_URL=postgresql+psycopg://...        # Supabase: Connect > Session pooler, with the password filled in
 GROQ_API_KEY=...                             # only needed to run the language-model agents
+GROQ_MODEL=openai/gpt-oss-120b               # optional: the model the agents use (must be one Groq still offers)
 DEV_PASSWORD=...                             # optional: password of the seeded test accounts (default promoflow-dev)
 ```
 

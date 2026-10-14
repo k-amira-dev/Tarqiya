@@ -2,23 +2,32 @@
 
 The applicant sees these as a *preview* while filling in the form; the Eligibility Checker re-runs them on
 submission with the full dossier (e.g. rank history from §4).
+
+HOW TO READ THIS FILE: the functions are "pure": give them dates and flags, get results back, with no database and no
+language model. That is why the rules are easy to test (see tests/test_eligibility.py) and easy to explain.
 """
 import math
 import re
 from dataclasses import dataclass
 from datetime import date
 
+from promoflow.config import DEV_IGNORE_SUBMISSION_WINDOW
 from promoflow.db.enums import PromotionTrack, Rank
 
+# The ranks from lowest to highest. A position in this list lets us compare ranks.
 RANK_ORDER = [Rank.LECTURER, Rank.ASSISTANT_PROFESSOR, Rank.ASSOCIATE_PROFESSOR, Rank.PROFESSOR]
+# Which rank someone must hold NOW to apply for each track, and which rank they are applying FOR.
 CURRENT_RANK_FOR = {PromotionTrack.TO_ASSOCIATE: Rank.ASSISTANT_PROFESSOR,
                     PromotionTrack.TO_FULL: Rank.ASSOCIATE_PROFESSOR}
 TARGET_RANK_FOR = {PromotionTrack.TO_ASSOCIATE: Rank.ASSOCIATE_PROFESSOR, PromotionTrack.TO_FULL: Rank.PROFESSOR}
+# Applications are only accepted in the first week (days 1-7) of these months: January, April and October.
 WINDOW_MONTHS = (1, 4, 10)  # submissions only in the first week of January, April and October
 WINDOW_LAST_DAY = 7
 MAX_JUSTIFICATION = 3000
 
 
+# The numeric thresholds for one promotion track. They are read from the database (promotion_criteria table), not
+# hard-coded.
 @dataclass(frozen=True)
 class Criteria:
     min_years_in_rank: int
@@ -31,6 +40,8 @@ class Criteria:
     reapply_new_main_author: int
 
 
+# The result of one eligibility check: a status (ok / warn / fail / info), a message for the applicant and the
+# policy page it comes from.
 @dataclass(frozen=True)
 class Check:
     label: str
@@ -39,6 +50,7 @@ class Check:
     policy_ref: str = ""
 
 
+# A submission window: when it opens, when it closes, and whether it is open today.
 @dataclass(frozen=True)
 class Window:
     start: date
@@ -53,6 +65,7 @@ def _add_years(d: date, years: int) -> date:
         return d.replace(year=d.year + years, day=28)
 
 
+# Time between two dates, in years.
 def years_between(start: date, end: date) -> float:
     """Whole calendar years plus the fraction of the current year. Exactly five years after a date is 5.0, whatever
     the leap days in between (dividing days by 365.25 made five full years come out as 4.9993 and fail the minimum)."""
@@ -68,7 +81,15 @@ def _fmt(years: float) -> str:
     return f"{math.floor(years * 10) / 10:.1f}"
 
 
+# True when `d` falls on days 1-7 of January, April or October (or always, in development mode).
+def in_submission_window(d: date) -> bool:
+    return DEV_IGNORE_SUBMISSION_WINDOW or (d.month in WINDOW_MONTHS and d.day <= WINDOW_LAST_DAY)
+
+
+# The submission window that is open today, or else the next one to open.
 def next_submission_window(today: date) -> Window:
+    if DEV_IGNORE_SUBMISSION_WINDOW:      # development only: pretend a window is open today (see config.py)
+        return Window(today, today, True)
     for year in (today.year, today.year + 1):
         for month in WINDOW_MONTHS:
             start, end = date(year, month, 1), date(year, month, WINDOW_LAST_DAY)
@@ -77,15 +98,20 @@ def next_submission_window(today: date) -> Window:
     raise AssertionError("unreachable")
 
 
+# The date to calculate the rules on: today if a window is open, otherwise the day the next one opens (so the
+# applicant sees how they will stand then).
 def assumed_submission_date(today: date) -> date:
     """Checks are evaluated on the day the dossier could be submitted: today if a window is open, else its start."""
     w = next_submission_window(today)
     return today if w.open_now else w.start
 
 
+# All the rules that can be checked from Section 0 alone. Returns a list of Check results. The applicant's live
+# preview and the Eligibility Checker agent both call this, so they always agree.
 def section0_checks(*, track: PromotionTrack | None, current_rank_date: date | None, appointment_date: date | None,
                     early_application: bool, exceptional_case: bool, previously_rejected: bool,
                     rejection_date: date | None, criteria: Criteria | None, today: date) -> list[Check]:
+    # `on` = the date the rules are applied on.
     on = assumed_submission_date(today)
     w = next_submission_window(today)
     window = Check(
@@ -98,6 +124,7 @@ def section0_checks(*, track: PromotionTrack | None, current_rank_date: date | N
     if track is None or criteria is None:
         return [Check("Promotion track", "info", "Choose your promotion track to see the requirements.")] + [window]
 
+    # Everything below adds results to this list, one rule at a time.
     checks = []
     need = criteria.min_years_in_rank
     if current_rank_date is None:
@@ -151,9 +178,11 @@ def section0_checks(*, track: PromotionTrack | None, current_rank_date: date | N
     return checks
 
 
+# An ORCID iD looks like 0000-0000-0000-000X: four groups of four characters, the last one a digit or X.
 _ORCID = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 
 
+# Check an ORCID's shape AND its last (check) character, which catches most typing mistakes.
 def orcid_is_valid(orcid: str) -> bool:
     """Format 0000-0000-0000-000X plus the ISO 7064 MOD 11-2 check digit."""
     if not _ORCID.match(orcid):
@@ -166,6 +195,7 @@ def orcid_is_valid(orcid: str) -> bool:
     return digits[-1] == ("X" if check == 10 else str(check))
 
 
+# Blocking errors for Section 0: a list of messages to show the applicant (empty list = valid).
 def validate_section0(v: dict, today: date) -> list[str]:
     """Blocking errors for saving Section 0. `v` holds the form values (see dossier.section0.FIELDS)."""
     errors = []

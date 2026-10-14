@@ -1,3 +1,7 @@
+"""Login and sessions (promoflow/auth): password hashing, the same error for a wrong email and a wrong password,
+lock-out after repeated failures, hashed and revocable session tokens, scoped roles, and the unique employee id.
+These run on a tiny in-memory SQLite database.
+"""
 from datetime import timedelta
 
 import pytest

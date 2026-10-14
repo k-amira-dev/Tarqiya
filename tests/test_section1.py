@@ -1,3 +1,8 @@
+"""Section 1 (declarations and the signed application form): saving, replacing the signed file (the old one is kept
+as history), the research-item count, validation, and the locked case. Each test is a small function whose name
+says what it checks. They use `app_env` (see conftest.py), a fresh temporary database seeded with reference data
+and test accounts, so no test depends on another and none touches the real database.
+"""
 from datetime import date
 
 import pytest
@@ -10,7 +15,9 @@ from promoflow.db.models import AuditLogEntry, CaseDocument, Publication, Promot
 from promoflow.dossier import section0 as s0
 from promoflow.dossier import section1 as s1
 
+# A fixed 'today', so the tests give the same answer on any day of the year.
 TODAY = date(2026, 9, 25)
+# Valid Section 0 answers. Every test starts from a draft case built with these.
 S0_VALUES = {
     "academic_year": "2026/2027", "track": PromotionTrack.TO_ASSOCIATE, "specialization": "Computer Science",
     "fine_specialization": "Machine Learning", "research_keywords": ["NLP"],
@@ -23,6 +30,7 @@ S1_VALUES = {"decl_not_from_thesis": True, "decl_after_current_rank": True,
             "application_signed_date": date(2026, 9, 20)}
 
 
+# The seeded test applicant (created by db/seed.py), looked up by email.
 def applicant(s):
     return s.scalar(select(User).where(User.email == "applicant@promoflow.test"))
 

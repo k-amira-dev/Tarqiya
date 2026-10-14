@@ -7,6 +7,7 @@ from promoflow.workflow.schemas import AgentOutput
 
 
 # The stub switch keeps these tests about the graph's flow; the real checker has its own tests.
+# The starting input for the graph with placeholder agents switched on.
 START = {"case_id": 1, "options": {"stub_eligible": True}}
 
 
@@ -19,6 +20,7 @@ def cfg(name):
     return {"configurable": {"thread_id": name}}
 
 
+# Which human gate the paused run is waiting at (hod, dean or chancellor), or None.
 def waiting_for(graph, config):
     tasks = graph.get_state(config).tasks
     return tasks[0].interrupts[0].value["gate"] if tasks and tasks[0].interrupts else None

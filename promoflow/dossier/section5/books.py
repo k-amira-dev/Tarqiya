@@ -13,17 +13,22 @@ from promoflow.dossier import audit, documents
 from promoflow.dossier.section5.common import CaseLocked, case_for_entity, case_for_new_entry
 from promoflow.rules.research import isbn_is_valid
 
+# The columns of a book or book chapter that the form edits. add() and update() copy exactly these from the form
+# values.
 FIELDS = ["item_type", "book_title", "chapter_title", "publisher", "publication_date", "isbn",
          "main_or_sole_author", "financial_support_by", "refereed", "referee_count", "from_thesis"]
+# Name of the file slot that holds the evidence file of a book or book chapter.
 EVIDENCE_SLOT = "evidence"
 
 
+# A book or book chapter together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class BookRow:
     book: Book
     evidence: CaseDocument | None
 
 
+# All of this case's books and chapters, each with its evidence file.
 def load(s: Session, case_id: int) -> list[BookRow]:
     books = s.scalars(select(Book).where(Book.case_id == case_id).order_by(Book.id)).all()
     return [BookRow(b, documents.current(s, case_id, "5B", DocumentKind.EVIDENCE, entity_table="book",
@@ -31,6 +36,8 @@ def load(s: Session, case_id: int) -> list[BookRow]:
            for b in books]
 
 
+# Check one book or book chapter's form BEFORE saving. Returns a list of messages for the applicant (an empty list
+# means valid).
 def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"item_type": "Item type", "book_title": "Book title", "publisher": "Publisher",
@@ -58,6 +65,8 @@ def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None
     return errors
 
 
+# Add a book or book chapter: refuse if the case is locked, create the row, attach the evidence file, and write an
+# audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     b = Book(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -71,6 +80,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return b.id
 
 
+# Edit a book or book chapter. A new file replaces the old one (the old one is kept as history); the audit log
+# records the values before and after.
 def update(s: Session, user_id: int, book_id: int, values: dict, evidence_upload=None) -> None:
     b = s.get(Book, book_id)
     case = case_for_entity(s, b.case_id)
@@ -86,6 +97,7 @@ def update(s: Session, user_id: int, book_id: int, values: dict, evidence_upload
              entity_id=b.id, before=before, after=audit.snapshot(b, FIELDS))
 
 
+# Delete a book or book chapter. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, book_id: int) -> None:
     b = s.get(Book, book_id)
     case = case_for_entity(s, b.case_id)

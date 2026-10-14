@@ -1,3 +1,8 @@
+"""Section 0 (applicant details and promotion track): the first save creates the draft case, later saves update it,
+and a submitted case is locked. Each test is a small function whose name says what it checks. They use `app_env`
+(see conftest.py), a fresh temporary database seeded with reference data and test accounts, so no test depends on
+another and none touches the real database.
+"""
 from datetime import date
 
 import pytest
@@ -7,6 +12,7 @@ from promoflow.db.enums import CaseStatus, PromotionTrack, Rank
 from promoflow.db.models import AuditLogEntry, CaseStatusHistory, PromotionCase, User
 from promoflow.dossier import section0 as s0
 
+# A fixed 'today', so the tests give the same answer on any day of the year.
 TODAY = date(2026, 9, 25)
 VALUES = {
     "academic_year": "2026/2027", "track": PromotionTrack.TO_ASSOCIATE, "specialization": "Computer Science",
@@ -18,6 +24,7 @@ VALUES = {
 }
 
 
+# The seeded test applicant (created by db/seed.py), looked up by email.
 def applicant(s):
     return s.scalar(select(User).where(User.email == "applicant@promoflow.test"))
 

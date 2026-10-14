@@ -11,10 +11,13 @@ from promoflow.db.models import CaseDocument
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section0 import EDITABLE, CaseLocked, active_case
 
+# Name of the file slot that holds the signed cover letter.
 LETTER_SLOT = "cover_letter"
+# The signed cover letter must be a PDF.
 ALLOWED_EXTENSIONS = {"pdf"}
 
 
+# Everything the Section 10 page needs.
 @dataclass(frozen=True)
 class Section10Context:
     case_id: int | None
@@ -23,6 +26,7 @@ class Section10Context:
     document: CaseDocument | None
 
 
+# Read the signed date and the uploaded letter, if any.
 def load(s: Session, user_id: int) -> Section10Context:
     case = active_case(s, user_id)
     if case is None:
@@ -31,6 +35,7 @@ def load(s: Session, user_id: int) -> Section10Context:
     return Section10Context(case.id, case.status, case.cover_letter_signed_date, doc)
 
 
+# Check the form before saving: a signing date (not in the future) and a PDF. Returns a list of messages.
 def validate(cover_letter_signed_date: date | None, has_document: bool, today: date,
             upload: tuple[str, bytes] | None = None) -> list[str]:
     errors = []
@@ -50,6 +55,7 @@ def validate(cover_letter_signed_date: date | None, has_document: bool, today: d
     return errors
 
 
+# Save the signing date and, if a new file was chosen, replace the letter.
 def save(s: Session, user_id: int, cover_letter_signed_date: date, upload: tuple[str, bytes] | None = None) -> int:
     case = active_case(s, user_id)
     if case is None:

@@ -1,4 +1,8 @@
-"""Researcher profiles (cached from Scopus/OpenAlex) and the external referee workflow."""
+"""Researcher profiles (cached from Scopus/OpenAlex) and the external referee workflow.
+
+Used by the Chancellor's Office Agent and the referee workflow after the Dean's approval. A referee's identity is
+confidential: it is enforced in the pages that the applicant can see, not left to the agents.
+"""
 from datetime import datetime
 from decimal import Decimal
 

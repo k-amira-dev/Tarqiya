@@ -16,10 +16,13 @@ from promoflow.db.models import AuditLogEntry, Book, CaseDocument, ConferencePap
 from promoflow.dossier import documents
 from promoflow.dossier.section0 import EDITABLE, CaseLocked, active_case
 
+# The case columns this section edits.
 FIELDS = ["decl_not_from_thesis", "decl_after_current_rank", "application_signed_date"]
+# File types accepted for the signed form (checked by file name ending).
 ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "jpg", "jpeg", "png"}
 
 
+# Everything the Section 1 page needs, gathered in one object by load().
 @dataclass(frozen=True)
 class Section1Context:
     case_id: int | None
@@ -29,15 +32,19 @@ class Section1Context:
     signed_document: CaseDocument | None
 
 
+# Turn dates and enums into plain values for the audit log.
 def _json(v):
     if isinstance(v, (date, datetime)):
         return v.isoformat()
     return v.value if hasattr(v, "value") else v
 
 
+# How many research entries the applicant has, counted with ONE query. Shown on the page next to the declarations.
 def research_item_count(s: Session, case_id: int) -> int:
     """§5.2: entries in §5A, 5A-2, 5B, 5C, 5G, in one query. §5A honours its own "submit for promotion" flag; the
     other entry types (not built yet) don't have one, so every row counts until that flag exists for them too."""
+    # A tiny sub-query: how many rows of `model` this case has. Several of them are combined into a single database
+    # call.
     def count(model, *conditions):
         return select(func.count()).select_from(model).where(model.case_id == case_id, *conditions).scalar_subquery()
 
@@ -47,10 +54,12 @@ def research_item_count(s: Session, case_id: int) -> int:
     return sum(c or 0 for c in counts)
 
 
+# The applicant's current signed application form, if one was uploaded.
 def _signed_document(s: Session, case_id: int) -> CaseDocument | None:
     return documents.current(s, case_id, "1", DocumentKind.SIGNED_FORM)
 
 
+# Read what the page needs. Returns an empty context when the applicant has no case yet.
 def load(s: Session, user_id: int, today: date) -> Section1Context:
     case = active_case(s, user_id)
     if case is None:
@@ -60,6 +69,8 @@ def load(s: Session, user_id: int, today: date) -> Section1Context:
                            _signed_document(s, case.id))
 
 
+# Check the form BEFORE saving. Returns a list of messages for the applicant (an empty list means everything is
+# valid).
 def validate_section1(values: dict, has_signed_document: bool, today: date,
                       new_upload: tuple[str, bytes] | None = None) -> list[str]:
     """Blocking errors for saving Section 1 (spec §5.2: both declarations, the signed form and its date are Req)."""
@@ -77,6 +88,7 @@ def validate_section1(values: dict, has_signed_document: bool, today: date,
         errors.append("Upload the signed application form.")
     if new_upload is not None:
         filename, data = new_upload
+        # The file type is read from the file name's ending, for example 'form.pdf' -> 'pdf'.
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
         if ext not in ALLOWED_EXTENSIONS:
             errors.append("The signed application form must be a PDF, Word, Excel or image file.")
@@ -85,6 +97,7 @@ def validate_section1(values: dict, has_signed_document: bool, today: date,
     return errors
 
 
+# Update the declarations and, if a file was uploaded, attach it. Section 1 never creates the case: Section 0 does.
 def save(s: Session, user_id: int, values: dict, today: date,
          upload: tuple[str, bytes] | None = None) -> int:
     """Update the declarations and, if `upload` is given, attach a newly uploaded signed form.
@@ -97,6 +110,7 @@ def save(s: Session, user_id: int, values: dict, today: date,
     if case.status not in EDITABLE:
         raise CaseLocked("This application has been submitted and can no longer be edited.")
 
+    # Remember the values before the change, so the audit log can show before and after.
     before = {f: _json(getattr(case, f)) for f in FIELDS}
     for f in FIELDS:
         setattr(case, f, values.get(f))

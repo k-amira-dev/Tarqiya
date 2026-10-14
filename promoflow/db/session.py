@@ -1,4 +1,10 @@
-"""Engine and session factory."""
+"""Engine and session factory.
+
+WHAT ARE THESE? (for beginners)
+  * The ENGINE is the connection to the database (and a small pool of reusable connections).
+  * A SESSION is one "conversation" with the database: you read and change objects, then COMMIT to make the changes
+    permanent, or ROLL BACK to undo them. Always use `session_scope()` below rather than creating sessions by hand.
+"""
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -12,7 +18,9 @@ from promoflow.config import DATABASE_URL
 # Parallel page loads (see `parallel`) need several warm connections; opening a fresh one to a far-away database
 # costs about a second, so keep a few open and drop idle ones after five minutes.
 POOL_SIZE = 6
+# pool_pre_ping = test a connection before using it, so a connection the server closed is replaced instead of failing.
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=POOL_SIZE, max_overflow=2, pool_recycle=300)
+# expire_on_commit=False keeps loaded objects readable after commit (otherwise reading them would query again).
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 # Called after a scope that wrote something commits; the UI uses it to drop its per-session page cache.
@@ -21,7 +29,12 @@ write_hooks: list[Callable[[], None]] = []
 
 @contextmanager
 def session_scope() -> Iterator[Session]:
-    """Commit on success, roll back on error."""
+    """Commit on success, roll back on error.
+
+    Use it with `with`:
+        with session_scope() as s:
+            s.add(something)        # committed automatically when the block ends normally
+    If an exception is raised inside the block, nothing is saved (rollback) and the exception continues upward."""
     session = SessionLocal()
     wrote = []
     # A flush that carried changes means this scope wrote data (explicit s.flush() calls included).

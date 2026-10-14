@@ -6,8 +6,9 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier import section11 as s11
 from promoflow.dossier.section0 import EDITABLE
+from promoflow.rules.eligibility import DEV_IGNORE_SUBMISSION_WINDOW
 from promoflow.ui import cache, theme
-from promoflow.workflow import service
+from promoflow.workflow import review_service
 
 K = "s11_"
 ICON = {"ok": "✓", "warn": "!", "fail": "✕", "info": "i"}
@@ -23,6 +24,9 @@ def render() -> None:
     <h1>Review &amp; Submit</h1>
     <p>Check everything below before you submit. Submission locks the dossier and starts the review workflow.</p>
     </div>""")
+    if DEV_IGNORE_SUBMISSION_WINDOW:
+        st.warning("DEVELOPMENT MODE: the submission window is ignored, so Submit works on any day. This setting must "
+                   "be off in a real deployment.", icon=":material/construction:")
 
     if ctx.case_id is None:
         st.info("Save Section 0 (Applicant Details & Promotion Track) first — it creates your draft application.",
@@ -107,7 +111,7 @@ def _submit_card(ctx: s11.Section11Context, user_id: int, today: date) -> None:
                 st.error(str(e))
                 return
             try:   # hand the submitted case to the agents; it runs in the background and never blocks this page
-                service.start_review(case_id)
+                review_service.start_review(case_id)
                 st.session_state[K + "flash"] = "Application submitted. The review has started."
             except Exception as e:   # the submission itself is saved; a person can restart the review
                 st.session_state[K + "flash"] = f"Application submitted, but the review could not start: {e}"

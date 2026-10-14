@@ -9,25 +9,28 @@ from promoflow.db.enums import CaseStatus, Gate, GateOutcome
 from promoflow.db.models import CaseReport, CaseStatusHistory, Flag, GateDecision, User
 from promoflow.dossier import section0 as s0
 from promoflow.dossier import section11 as s11
-from promoflow.workflow import service
+from promoflow.workflow import review_service
 from promoflow.workflow.graph import memory_checkpointer
 from tests.test_eligibility_checker import ON, S0_VALUES
 
+# Switch that makes the graph use placeholder agents, so these tests are about the review service, not the agents.
 STUB = {"stub_eligible": True}
 
 
+# A fresh review service for each test: an in-memory checkpointer, and its busy/error bookkeeping cleared.
 @pytest.fixture
 def svc(app_env):
-    service.configure(memory_checkpointer())
-    service._busy.clear()
-    service._errors.clear()
-    return service
+    review_service.configure(memory_checkpointer())
+    review_service._busy.clear()
+    review_service._errors.clear()
+    return review_service
 
 
 def uid(s, email: str) -> int:
     return s.scalar(select(User.id).where(User.email == f"{email}@promoflow.test"))
 
 
+# Make a submitted case for the test applicant (calling it again after a revision is a resubmission).
 def submit(app_env, day: date = ON) -> int:
     """A submitted case for the test applicant (the second call is a resubmission after a revision)."""
     with app_env.session_scope() as s:
@@ -38,7 +41,7 @@ def submit(app_env, day: date = ON) -> int:
 
 
 def status(app_env, case_id) -> CaseStatus:
-    return service.get_status(case_id).case_status
+    return review_service.get_status(case_id).case_status
 
 
 def users(app_env):
@@ -140,7 +143,7 @@ def test_a_failing_run_is_reported_not_lost(app_env, svc, monkeypatch):
     def boom():
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(service, "_get_graph", boom)
+    monkeypatch.setattr(review_service, "_get_graph", boom)
     svc.start_review(case_id, options=STUB, wait=True)
     st = svc.get_status(case_id)
     assert "boom" in st.error and not st.running

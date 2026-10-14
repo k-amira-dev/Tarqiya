@@ -1,3 +1,8 @@
+"""The command that creates accounts and resets passwords (promoflow/admin.py): new colleges and departments are
+created, an existing one is reused, bad input is rejected. Each test is a small function whose name says what it
+checks. They use `app_env` (see conftest.py), a fresh temporary database seeded with reference data and test
+accounts, so no test depends on another and none touches the real database.
+"""
 import pytest
 from sqlalchemy import select
 

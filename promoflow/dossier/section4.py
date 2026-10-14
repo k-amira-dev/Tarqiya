@@ -15,24 +15,29 @@ from promoflow.dossier import audit, documents
 from promoflow.dossier.section0 import EDITABLE, CaseLocked, active_case
 from promoflow.rules.eligibility import years_between
 
+# The columns the forms edit, one list for rank history (4A) and one for non-academic positions (4B).
 RANK_FIELDS = ["rank", "date_obtained", "university", "country_code", "held_from", "held_to", "at_this_university"]
 POSITION_FIELDS = ["position", "employer", "country_code", "date_from", "date_to"]
+# Names for the evidence file of each kind of entry.
 EXPERIENCE_SLOT = "experience"
 EVIDENCE_SLOT = "evidence"
 
 
+# A rank together with its evidence file.
 @dataclass(frozen=True)
 class RankRow:
     rank: RankHistory
     evidence: CaseDocument | None
 
 
+# A non-academic position together with its evidence file.
 @dataclass(frozen=True)
 class PositionRow:
     position: NonAcademicPosition
     evidence: CaseDocument | None
 
 
+# Everything the Section 4 page needs.
 @dataclass(frozen=True)
 class Section4Context:
     case_id: int | None
@@ -42,6 +47,8 @@ class Section4Context:
     positions: list[PositionRow]
 
 
+# Read the rank history and the other positions, oldest first. The Eligibility Checker uses the rank history to
+# confirm time in rank.
 def load(s: Session, user_id: int, today: date) -> Section4Context:
     case = active_case(s, user_id)
     if case is None:
@@ -60,17 +67,22 @@ def load(s: Session, user_id: int, today: date) -> Section4Context:
     return Section4Context(case.id, case.status, case.current_rank, rank_rows, position_rows)
 
 
+# How long a rank was held, in years (an unfinished rank counts up to today).
 def rank_years(r: RankHistory, today: date) -> float:
     return years_between(r.held_from, r.held_to or today)
 
 
+# Section-level problems for the page's warning banner.
 def section_checks(ranks: list[RankRow], current_rank: Rank | None) -> list[str]:
     return rank_entry_checks([row.rank for row in ranks], current_rank)
 
 
+# Problems in the WHOLE rank history, such as two current ranks, overlapping periods, or a current rank that
+# disagrees with Section 0. They are shown as a banner and are also used by the Eligibility Checker.
 def rank_entry_checks(entries: list[RankHistory], current_rank: Rank | None) -> list[str]:
     """Section-level problems shown as a banner, not blocking a single entry's save (spec §8 validation note)."""
     problems = []
+    # Sort by start date, then compare each rank with the next one to find overlaps.
     ordered = sorted(entries, key=lambda r: r.held_from)
     current_entries = [r for r in ordered if r.held_to is None]
     if len(current_entries) > 1:
@@ -85,6 +97,7 @@ def rank_entry_checks(entries: list[RankHistory], current_rank: Rank | None) -> 
     return problems
 
 
+# Check one rank entry's form. Returns a list of messages.
 def validate_rank(values: dict, today: date) -> list[str]:
     errors = []
     required = {"rank": "Academic rank", "date_obtained": "Date rank obtained", "university": "University granting the rank",
@@ -100,6 +113,7 @@ def validate_rank(values: dict, today: date) -> list[str]:
     return errors
 
 
+# Check one non-academic position's form. Returns a list of messages.
 def validate_position(values: dict) -> list[str]:
     errors = []
     required = {"position": "Position", "employer": "Employer", "country_code": "Country", "date_from": "From date"}
@@ -112,6 +126,7 @@ def validate_position(values: dict) -> list[str]:
     return errors
 
 
+# The case that owns an entry, refusing if it is locked.
 def _case_for(s: Session, case_id: int) -> PromotionCase:
     case = s.get(PromotionCase, case_id)
     if case.status not in EDITABLE:
@@ -119,6 +134,7 @@ def _case_for(s: Session, case_id: int) -> PromotionCase:
     return case
 
 
+# Add a rank history entry (same steps as every 'add': check, create, attach evidence, audit).
 def add_rank(s: Session, user_id: int, values: dict, evidence: tuple[str, bytes] | None) -> int:
     case = active_case(s, user_id)
     if case is None:
@@ -137,6 +153,7 @@ def add_rank(s: Session, user_id: int, values: dict, evidence: tuple[str, bytes]
     return rank.id
 
 
+# Edit a rank history entry.
 def update_rank(s: Session, user_id: int, rank_id: int, values: dict,
                evidence: tuple[str, bytes] | None = None) -> None:
     rank = s.get(RankHistory, rank_id)
@@ -153,6 +170,7 @@ def update_rank(s: Session, user_id: int, rank_id: int, values: dict,
              entity_id=rank.id, before=before, after=audit.snapshot(rank, RANK_FIELDS))
 
 
+# Delete a rank history entry.
 def delete_rank(s: Session, user_id: int, rank_id: int) -> None:
     rank = s.get(RankHistory, rank_id)
     case = _case_for(s, rank.case_id)
@@ -161,6 +179,7 @@ def delete_rank(s: Session, user_id: int, rank_id: int) -> None:
     s.delete(rank)
 
 
+# Add a non-academic position.
 def add_position(s: Session, user_id: int, values: dict, evidence: tuple[str, bytes] | None) -> int:
     case = active_case(s, user_id)
     if case is None:
@@ -180,6 +199,7 @@ def add_position(s: Session, user_id: int, values: dict, evidence: tuple[str, by
     return position.id
 
 
+# Edit a non-academic position.
 def update_position(s: Session, user_id: int, position_id: int, values: dict,
                     evidence: tuple[str, bytes] | None = None) -> None:
     position = s.get(NonAcademicPosition, position_id)
@@ -197,6 +217,7 @@ def update_position(s: Session, user_id: int, position_id: int, values: dict,
              after=audit.snapshot(position, POSITION_FIELDS))
 
 
+# Delete a non-academic position.
 def delete_position(s: Session, user_id: int, position_id: int) -> None:
     position = s.get(NonAcademicPosition, position_id)
     case = _case_for(s, position.case_id)

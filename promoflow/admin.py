@@ -20,14 +20,20 @@ from promoflow.db.enums import AuthProvider, RoleName
 from promoflow.db.models import AuditLogEntry, College, Department, User, UserRole
 from promoflow.db.session import session_scope
 
+# A new password must be at least this long.
 MIN_PASSWORD = 10
+# A very simple email shape check: something@something.something (no spaces). It only catches obvious typos.
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+# Raised for a problem the person running the command can fix (bad email, duplicate account, ...). main() prints it
+# nicely instead of crashing.
 class AdminError(Exception):
     pass
 
 
+# Make a short unique code from a name's initials, for example 'College of Arts, Humanities and Social Sciences'
+# becomes 'CAHSS'. A number is added if the code already exists.
 def _code(name: str, taken: set[str]) -> str:
     """Short unique code from the initials, e.g. 'College of Arts, Humanities and Social Sciences' -> 'CAHSS'."""
     words = [w for w in re.findall(r"[A-Za-z]+", name) if w.lower() not in {"of", "and", "the", "for"}]
@@ -38,6 +44,8 @@ def _code(name: str, taken: set[str]) -> str:
     return code
 
 
+# Find the college with this name (ignoring capital letters) or create it. This is why create-user accepts a new
+# college or department name without any extra step.
 def get_or_create_college(s: Session, name: str) -> College:
     college = s.scalar(select(College).where(func.lower(College.name_en) == name.strip().lower()))
     if college is None:
@@ -47,6 +55,7 @@ def get_or_create_college(s: Session, name: str) -> College:
     return college
 
 
+# Same idea for a department, which always belongs to one college.
 def get_or_create_department(s: Session, college: College, name: str) -> Department:
     dept = s.scalar(select(Department).where(Department.college_id == college.id,
                                              func.lower(Department.name_en) == name.strip().lower()))
@@ -58,11 +67,14 @@ def get_or_create_department(s: Session, college: College, name: str) -> Departm
     return dept
 
 
+# The only password rule enforced here: a minimum length.
 def check_password(password: str) -> None:
     if len(password) < MIN_PASSWORD:
         raise AdminError(f"The password must be at least {MIN_PASSWORD} characters.")
 
 
+# Create one account with its roles. The password is hashed before saving. A HoD role is tied to the user's
+# department, a Dean role to their college.
 def create_user(s: Session, *, email: str, full_name: str, college: str, department: str, password: str,
                 roles: list[RoleName]) -> User:
     email = email.strip().lower()
@@ -78,6 +90,7 @@ def create_user(s: Session, *, email: str, full_name: str, college: str, departm
     s.add(user)
     s.flush()
     for role in roles:
+        # Roles that need a scope get it here: HoD -> department_id, Dean -> college_id, other roles need none.
         scope = {"department_id": d.id} if role == RoleName.HOD else {"college_id": c.id} if role == RoleName.DEAN else {}
         s.add(UserRole(user_id=user.id, role=role, **scope))
     s.add(AuditLogEntry(action="user_created", entity_table="app_user", entity_id=user.id,
@@ -86,6 +99,7 @@ def create_user(s: Session, *, email: str, full_name: str, college: str, departm
     return user
 
 
+# Reset someone's password and clear any lock-out, so they can log in again.
 def set_password(s: Session, email: str, password: str) -> None:
     user = s.scalar(select(User).where(User.email == email.strip().lower()))
     if user is None:
@@ -97,6 +111,8 @@ def set_password(s: Session, email: str, password: str) -> None:
     s.add(AuditLogEntry(action="password_set", entity_table="app_user", entity_id=user.id))
 
 
+# Ask for the password twice at a HIDDEN prompt (getpass). The password is never typed on the command line, so it
+# does not end up in the shell history.
 def _ask_password() -> str:
     first = getpass.getpass(f"New password (at least {MIN_PASSWORD} characters, hidden while typing): ")
     if first != getpass.getpass("Type it again: "):
@@ -104,6 +120,7 @@ def _ask_password() -> str:
     return first
 
 
+# The command-line front end. `create-user` and `set-password` are the two sub-commands.
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m promoflow.admin", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -120,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         password = _ask_password()
+        # Everything inside this block is saved together at the end, or not at all if something fails.
         with session_scope() as s:
             if args.command == "create-user":
                 roles = [RoleName(r) for r in (args.role or ["applicant"])]

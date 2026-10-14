@@ -14,10 +14,13 @@ from promoflow.db.models import CaseDocument
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section0 import EDITABLE, CaseLocked, active_case
 
+# Name of the file slot that holds the signed Conditions Form.
 FORM_SLOT = "conditions_form"
+# The signed form must be a PDF.
 ALLOWED_EXTENSIONS = {"pdf"}
 
 
+# Everything the Section 9 page needs.
 @dataclass(frozen=True)
 class Section9Context:
     case_id: int | None
@@ -26,6 +29,7 @@ class Section9Context:
     document: CaseDocument | None
 
 
+# Read the signed date and the uploaded form, if any.
 def load(s: Session, user_id: int) -> Section9Context:
     case = active_case(s, user_id)
     if case is None:
@@ -34,6 +38,7 @@ def load(s: Session, user_id: int) -> Section9Context:
     return Section9Context(case.id, case.status, case.conditions_signed_date, doc)
 
 
+# Check the form before saving: a signing date (not in the future) and a PDF. Returns a list of messages.
 def validate(conditions_signed_date: date | None, has_document: bool, today: date,
             upload: tuple[str, bytes] | None = None) -> list[str]:
     errors = []
@@ -53,6 +58,8 @@ def validate(conditions_signed_date: date | None, has_document: bool, today: dat
     return errors
 
 
+# Save the signing date and, if a new file was chosen, replace the form. The Eligibility Checker later confirms the
+# file is present.
 def save(s: Session, user_id: int, conditions_signed_date: date, upload: tuple[str, bytes] | None = None) -> int:
     case = active_case(s, user_id)
     if case is None:

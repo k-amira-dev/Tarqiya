@@ -11,11 +11,16 @@ from promoflow.db.models import CaseDocument, CourseTaught
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section6.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a course entry that the form edits.
 FIELDS = ["academic_year", "semester", "course_code", "course_title", "level", "sections", "students", "role",
          "delivery_mode"]
+# Name of the file slot that holds the registrar's teaching-load report. One report covers the whole list, not one
+# file per course.
 REPORT_SLOT = "registrar_report"
 
 
+# How varied the applicant's teaching is: distinct courses against repeats. Used for the course-diversity point
+# (Appendix E item 3).
 @dataclass(frozen=True)
 class DiversitySummary:
     distinct_courses: int
@@ -23,15 +28,18 @@ class DiversitySummary:
     most_repeated_share: float  # 0..1
 
 
+# All of this case's courses, oldest first.
 def load(s: Session, case_id: int) -> list[CourseTaught]:
     return s.scalars(select(CourseTaught).where(CourseTaught.case_id == case_id)
                      .order_by(CourseTaught.academic_year.desc(), CourseTaught.semester)).all()
 
 
+# The uploaded registrar report, if any.
 def registrar_report(s: Session, case_id: int) -> CaseDocument | None:
     return documents.current(s, case_id, "6A", DocumentKind.EVIDENCE, slot=REPORT_SLOT)
 
 
+# Count the distinct course codes among the applicant's courses.
 def diversity(courses: list[CourseTaught]) -> DiversitySummary:
     if not courses:
         return DiversitySummary(0, 0, 0.0)
@@ -41,6 +49,7 @@ def diversity(courses: list[CourseTaught]) -> DiversitySummary:
     return DiversitySummary(distinct, len(codes), most_common / len(codes))
 
 
+# Check one course's form BEFORE saving. Returns a list of messages (empty = valid).
 def validate(values: dict) -> list[str]:
     errors = []
     required = {"academic_year": "Academic year", "semester": "Semester", "course_code": "Course code",
@@ -55,6 +64,7 @@ def validate(values: dict) -> list[str]:
     return errors
 
 
+# Add a course entry and write an audit-log entry.
 def add(s: Session, user_id: int, values: dict) -> int:
     case = case_for_new_entry(s, user_id)
     c = CourseTaught(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -65,6 +75,7 @@ def add(s: Session, user_id: int, values: dict) -> int:
     return c.id
 
 
+# Edit a course entry; the audit log records before and after.
 def update(s: Session, user_id: int, course_id: int, values: dict) -> None:
     c = s.get(CourseTaught, course_id)
     case = case_for_entity(s, c.case_id)
@@ -76,6 +87,7 @@ def update(s: Session, user_id: int, course_id: int, values: dict) -> None:
              entity_id=c.id, before=before, after=audit.snapshot(c, FIELDS))
 
 
+# Delete a course entry. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, course_id: int) -> None:
     c = s.get(CourseTaught, course_id)
     case = case_for_entity(s, c.case_id)
@@ -84,6 +96,7 @@ def delete(s: Session, user_id: int, course_id: int) -> None:
     s.delete(c)
 
 
+# Save the uploaded registrar report, replacing an earlier one.
 def save_registrar_report(s: Session, case_id: int, user_id: int, upload: tuple[str, bytes]) -> None:
     filename, data = upload
     documents.replace(s, case_id, user_id, "6A", DocumentKind.EVIDENCE, filename, data, slot=REPORT_SLOT)

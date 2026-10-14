@@ -1,3 +1,7 @@
+"""The pure eligibility rules (promoflow/rules/eligibility.py): submission windows, time in rank, early and
+exceptional applications, reapplication, the ORCID check digit and Section 0 validation messages. No database is
+needed: the rules are plain functions.
+"""
 from datetime import date
 
 from promoflow.db.enums import PromotionTrack, Rank
@@ -69,3 +73,16 @@ def test_validation_messages():
     assert "digits only" in text
     assert "not both" in text
     assert "justify" in text
+
+
+def test_the_window_rule_applies_by_default():
+    from promoflow.rules.eligibility import in_submission_window
+    assert in_submission_window(date(2026, 10, 3)) and not in_submission_window(date(2026, 12, 15))
+    assert not next_submission_window(date(2026, 12, 15)).open_now
+
+
+def test_the_development_switch_opens_every_day(monkeypatch):
+    import promoflow.rules.eligibility as rules
+    monkeypatch.setattr(rules, "DEV_IGNORE_SUBMISSION_WINDOW", True)
+    assert rules.in_submission_window(date(2026, 12, 15))
+    assert rules.next_submission_window(date(2026, 12, 15)).open_now

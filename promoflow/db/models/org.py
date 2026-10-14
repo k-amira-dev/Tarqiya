@@ -10,6 +10,7 @@ from promoflow.db.base import Base, IdMixin, TimestampMixin, pg_enum
 from promoflow.db.enums import AuthProvider, RoleName
 
 
+# A college contains departments. It decides which Dean sees an applicant's case.
 class College(IdMixin, TimestampMixin, Base):
     __tablename__ = "college"
 
@@ -20,6 +21,7 @@ class College(IdMixin, TimestampMixin, Base):
     departments: Mapped[list["Department"]] = relationship(back_populates="college")
 
 
+# A department belongs to one college. It decides which Head of Department sees an applicant's case.
 class Department(IdMixin, TimestampMixin, Base):
     __tablename__ = "department"
 
@@ -60,6 +62,7 @@ class User(IdMixin, TimestampMixin, Base):
     department_id: Mapped[int | None] = mapped_column(ForeignKey("department.id"))
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Brute-force protection: after too many wrong passwords the account is locked until `locked_until`.
     failed_login_count: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

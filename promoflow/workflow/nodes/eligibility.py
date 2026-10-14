@@ -22,7 +22,7 @@ from promoflow.db.models import CaseDocument, Degree, PromotionCase, PromotionCr
 from promoflow.dossier import section3, section4, section9, section10
 from promoflow.dossier.section6 import courses as courses_mod
 from promoflow.rules.eligibility import (
-    WINDOW_LAST_DAY, WINDOW_MONTHS, Criteria, section0_checks, years_between,
+    Criteria, in_submission_window, section0_checks, years_between,
 )
 from promoflow.workflow.nodes import stub_result, use_stubs
 from promoflow.workflow.persist import save_output
@@ -42,20 +42,28 @@ SCOPUS_MAX_AGE_DAYS = 30
 COMPLETENESS_PREFIXES = ("doc_", "doctorate", "rank_history", "scopus_")
 
 
+# Turn a label such as "Time in current rank" into a short key, "time_in_current_rank".
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
+# True when the date is the 1st-7th of January, April or October: the only days applications are accepted.
 def _in_window(d: date) -> bool:
-    return d.month in WINDOW_MONTHS and d.day <= WINDOW_LAST_DAY
+    return in_submission_window(d)
 
 
+# The heart of the agent: every eligibility rule, evaluated for one case. It only READS the database; run() below
+# saves the result.
 def check_case(s: Session, case_id: int, today: date) -> AgentOutput:
     """All the eligibility checks for one case. Reads the database, writes nothing."""
     case = s.get(PromotionCase, case_id)
     if case is None:
         raise ValueError(f"No case with id {case_id}.")
+    # `on` is the date the rules are applied on: the day the applicant actually submitted (or today, if not yet
+    # submitted).
     on = case.submitted_at.date() if case.submitted_at else today
+    # The numbers (minimum years in rank, and so on) come from the database, not from the code, so the policy can
+    # change without anyone editing Python.
     crit_row = s.scalar(select(PromotionCriteria).where(
         PromotionCriteria.policy_version_id == case.policy_version_id, PromotionCriteria.track == case.track))
     if crit_row is None:
@@ -65,9 +73,13 @@ def check_case(s: Session, case_id: int, today: date) -> AgentOutput:
             flags=[FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="criteria_missing",
                            message="No promotion criteria found for this case's policy version. Ask the admin.")])
 
+    # Two lists are filled in as we go: `criteria` = the rows of the report table (one per check); `flags` = the
+    # messages for anything that did not pass.
     criteria: list[CriterionOut] = []
     flags: list[FlagOut] = []
 
+    # Helper used by every check below: it records the table row and, when the check did not pass, a flag carrying
+    # the guidance message.
     def add(key: str, label: str, passed: bool | None, *, message: str = "", ref: str | None = None,
             required: float | None = None, actual: float | None = None,
             severity: FlagSeverity = FlagSeverity.WARNING, code: str | None = None) -> None:
@@ -81,6 +93,8 @@ def check_case(s: Session, case_id: int, today: date) -> AgentOutput:
     rules = Criteria(crit_row.min_years_in_rank, crit_row.min_years_at_institution, crit_row.early_application_months,
                      crit_row.exceptional_min_years, crit_row.reapply_min_years, crit_row.reapply_new_publications,
                      crit_row.reapply_new_class_a, crit_row.reapply_new_main_author)
+    # The Section 0 rules are written once, in rules/eligibility.py, and shared with the applicant's live preview.
+    # Each result has a status: ok, warn, fail or info.
     for chk in section0_checks(
             track=case.track, current_rank_date=case.current_rank_date, appointment_date=case.appointment_date,
             early_application=case.early_application, exceptional_case=case.exceptional_case,
@@ -107,6 +121,7 @@ def check_case(s: Session, case_id: int, today: date) -> AgentOutput:
                     f"April and October.", ref="Conditions §8")
 
     # 3. Rank history (§4) agrees with Section 0.
+    # The rank history typed in Section 4 must agree with the date typed in Section 0.
     ranks = list(s.scalars(select(RankHistory).where(RankHistory.case_id == case_id)))
     if not ranks:
         add("rank_history", "Rank history entered", False, message="No rank history entered. Complete Section 4A.")
@@ -147,6 +162,8 @@ def check_case(s: Session, case_id: int, today: date) -> AgentOutput:
         add(f"doc_{code}{'_' + slot if slot else ''}", f"{name} uploaded", (code, kind, slot) in present,
             message=f"{name} is missing. Upload it in {where}.", code="document_missing")
 
+    # Turn all the checks into ONE verdict. A real rule failing = FAIL (not eligible). Only missing items =
+    # INCOMPLETE (the applicant can fix it). Anything needing a person = NEEDS_HUMAN. Otherwise PASS.
     failed = [c for c in criteria if c.passed is False]
     if any(not c.key.startswith(COMPLETENESS_PREFIXES) for c in failed):
         verdict = Verdict.FAIL
@@ -165,12 +182,15 @@ def check_case(s: Session, case_id: int, today: date) -> AgentOutput:
                        flags=flags, confidence=Confidence.HIGH)
 
 
+# The graph calls this. For tests it can return placeholder output; otherwise it reads the case, checks it, saves
+# the result and tells the graph whether to carry on (`eligible`).
 def run(state: CaseState) -> dict:
     if use_stubs(state):               # tests and demos of the graph's flow only; no database needed
         eligible = bool(state["options"].get("stub_eligible", True))
         update = stub_result(Component.ELIGIBILITY, Verdict.PASS if eligible else Verdict.FAIL)
         update["eligible"] = eligible
         return update
+    # session_scope() opens a database session, commits when the block ends and rolls back if there was an error.
     with db_session.session_scope() as s:
         out = check_case(s, state["case_id"], date.today())
         save_output(s, state["case_id"], out)

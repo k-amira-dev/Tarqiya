@@ -1,3 +1,9 @@
+"""Section 5 (research): journal classification, ISBN check, papers with their author lists, creative works, books,
+conference papers, funded projects, patents, awards, the Scopus record and the journal classification form. Each
+test is a small function whose name says what it checks. They use `app_env` (see conftest.py), a fresh temporary
+database seeded with reference data and test accounts, so no test depends on another and none touches the real
+database.
+"""
 from datetime import date
 from decimal import Decimal
 
@@ -15,7 +21,9 @@ from promoflow.dossier.section5 import awards, books, conference, creative, fund
 from promoflow.dossier.section5 import classification
 from promoflow.rules.research import classify_journal, isbn_is_valid
 
+# A fixed 'today', so the tests give the same answer on any day of the year.
 TODAY = date(2026, 9, 25)
+# Valid Section 0 answers. Every test starts from a draft case built with these.
 S0_VALUES = {
     "academic_year": "2026/2027", "track": PromotionTrack.TO_ASSOCIATE, "specialization": "Computer Science",
     "fine_specialization": "Machine Learning", "research_keywords": [],
@@ -35,10 +43,12 @@ PAPER = {
 }
 
 
+# The seeded test applicant (created by db/seed.py), looked up by email.
 def applicant(s):
     return s.scalar(select(User).where(User.email == "applicant@promoflow.test"))
 
 
+# Create the draft case from S0_VALUES and return its id (most tests need a case to attach entries to).
 def _case(s):
     return s0.save(s, applicant(s).id, dict(S0_VALUES), TODAY)
 

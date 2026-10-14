@@ -24,6 +24,7 @@ from promoflow.dossier.section6 import courses as courses_mod
 from promoflow.rules.eligibility import Check, Criteria, next_submission_window, section0_checks
 
 
+# One row of the completeness checklist: a section, whether it is complete, and a note saying what is missing.
 @dataclass(frozen=True)
 class SectionStatus:
     code: str
@@ -32,6 +33,8 @@ class SectionStatus:
     note: str
 
 
+# The research counts shown next to the policy minimums, so the applicant sees roughly where they stand BEFORE
+# submitting.
 @dataclass(frozen=True)
 class ResearchSnapshot:
     total_papers: int
@@ -46,6 +49,7 @@ class ResearchSnapshot:
     min_class_a_main_author: int
 
 
+# Everything the Review & Submit page needs, gathered by load().
 @dataclass(frozen=True)
 class Section11Context:
     case_id: int | None
@@ -59,6 +63,8 @@ class Section11Context:
     can_submit: bool
 
 
+# Simple counts from Section 5 compared with the thresholds. It is only a preview: the real checks (caps,
+# classification, cross-checks) are the Research Agent's job.
 def _research_snapshot(papers: list[Publication], classes: dict, criteria: PromotionCriteria) -> ResearchSnapshot:
     sole_or_main = sum(1 for p in papers if p.applicant_role in (AuthorRole.SOLE, AuthorRole.MAIN))
     published = sum(1 for p in papers if p.status == PublicationStatus.PUBLISHED)
@@ -72,6 +78,7 @@ def _research_snapshot(papers: list[Publication], classes: dict, criteria: Promo
     )
 
 
+# The message to show when the degrees section is incomplete (none entered, or no doctorate).
 def _degrees_note(levels: list) -> str:
     if not levels:
         return "No degrees entered."
@@ -80,6 +87,8 @@ def _degrees_note(levels: list) -> str:
     return ""
 
 
+# Everything the page shows, in about ten queries: which sections are complete, the preliminary eligibility checks,
+# the research counts and whether Submit is allowed.
 def load(s: Session, user_id: int, today: date) -> Section11Context:
     """About ten queries in total: this page only needs presence checks and counts, not every entry in full."""
     case = active_case(s, user_id)
@@ -105,9 +114,12 @@ def load(s: Session, user_id: int, today: date) -> Section11Context:
     criteria_row = s.scalar(select(PromotionCriteria).where(PromotionCriteria.policy_version_id == policy.id,
                                                             PromotionCriteria.track == case.track))
 
+    # True if the required file exists in that section, kind and slot.
     def has(code: str, kind: DocumentKind, slot: str | None = None) -> bool:
         return (code, kind, slot) in section_docs
 
+    # One entry per section, each with its own definition of 'complete'. Completeness is a presence check only:
+    # whether the content is right is for the agents to judge.
     sections = [
         SectionStatus("0", "Applicant Details & Promotion Track",
                      bool(case.track and case.specialization and case.appointment_date and case.rank_on_appointment
@@ -157,6 +169,7 @@ def load(s: Session, user_id: int, today: date) -> Section11Context:
     )
     window = next_submission_window(today)
     research = _research_snapshot(submitted_papers, classes, criteria_row) if criteria_row else None
+    # Submit is allowed only while the case is editable, a submission window is open and every section is complete.
     can_submit = (case.status in EDITABLE and window.open_now and completed_count == len(sections))
 
     return Section11Context(
@@ -166,6 +179,8 @@ def load(s: Session, user_id: int, today: date) -> Section11Context:
     )
 
 
+# The Submit button. It locks the dossier by changing the status to 'submitted', records who and when, and leaves an
+# audit entry. The page then hands the case to the agents (review_service.start_review).
 def submit(s: Session, user_id: int, today: date) -> None:
     case = active_case(s, user_id)
     if case is None:
@@ -176,6 +191,7 @@ def submit(s: Session, user_id: int, today: date) -> None:
     if not window.open_now:
         raise CaseLocked("Submissions are only accepted in the first week of January, April or October.")
 
+    # Do the actual submission: new status, timestamp, history row, audit entry.
     previous_status = case.status
     case.status = CaseStatus.SUBMITTED
     case.submitted_at = datetime.now(timezone.utc)

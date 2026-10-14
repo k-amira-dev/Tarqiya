@@ -15,22 +15,27 @@ from promoflow.db.models import CaseDocument, ScopusEvidence
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section5.common import CaseLocked, case_for_new_entry
 
+# The Scopus numbers the applicant copies from their profile.
 FIELDS = ["h_index", "total_citations", "screenshot_date"]
+# Name of the file slot that holds the screenshot of the Scopus profile.
 SCREENSHOT_SLOT = "scopus_screenshot"
 
 
+# Everything the Section 5F page needs.
 @dataclass(frozen=True)
 class Section5FContext:
     evidence: ScopusEvidence | None
     screenshot: CaseDocument | None
 
 
+# The case's single Scopus record and its screenshot, if any.
 def load(s: Session, case_id: int) -> Section5FContext:
     evidence = s.scalar(select(ScopusEvidence).where(ScopusEvidence.case_id == case_id))
     screenshot = documents.current(s, case_id, "5F", DocumentKind.SCREENSHOT, slot=SCREENSHOT_SLOT)
     return Section5FContext(evidence, screenshot)
 
 
+# Check the form before saving. Returns a list of messages (empty = valid).
 def validate(values: dict, today: date, has_screenshot: bool, upload=None) -> list[str]:
     errors = []
     h_index, citations, screenshot_date = values.get("h_index"), values.get("total_citations"), values.get("screenshot_date")
@@ -47,6 +52,8 @@ def validate(values: dict, today: date, has_screenshot: bool, upload=None) -> li
     return errors
 
 
+# Create or update the case's Scopus record (there is exactly one per case) and replace the screenshot if a new one
+# was chosen.
 def save(s: Session, user_id: int, values: dict, upload: tuple[str, bytes] | None = None) -> None:
     case = case_for_new_entry(s, user_id)
     evidence = s.scalar(select(ScopusEvidence).where(ScopusEvidence.case_id == case.id))

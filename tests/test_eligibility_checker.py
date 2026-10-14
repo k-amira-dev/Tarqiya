@@ -10,6 +10,7 @@ from promoflow.rules.eligibility import years_between
 from promoflow.workflow.nodes import eligibility as elig
 from promoflow.workflow.persist import save_output
 
+# A fixed date inside the 1-7 October submission window.
 ON = date(2026, 10, 3)  # inside the 1-7 October window
 S0_VALUES = {
     "academic_year": "2026/2027", "track": PromotionTrack.TO_ASSOCIATE, "specialization": "Computer Science",
@@ -25,10 +26,12 @@ def applicant(s):
     return s.scalar(select(User).where(User.email == "applicant@promoflow.test"))
 
 
+# Create a draft case from valid Section 0 answers, with optional overrides.
 def make_case(s, **overrides) -> int:
     return s0.save(s, applicant(s).id, {**S0_VALUES, **overrides}, ON)
 
 
+# Add everything the checker looks for besides Section 0: documents, rank history, a doctorate and Scopus evidence.
 def fill(s, case_id, *, skip_doc=None, scopus_date=date(2026, 9, 20), rank_date=date(2019, 9, 1)):
     """Everything the checker looks for besides Section 0: documents, rank history, a PhD and Scopus evidence."""
     uid = applicant(s).id
@@ -46,6 +49,7 @@ def fill(s, case_id, *, skip_doc=None, scopus_date=date(2026, 9, 20), rank_date=
     s.flush()
 
 
+# Build a case, optionally mark it submitted, and run the checker on it.
 def check(app_env, *, fill_kwargs=None, submitted=None, **s0_overrides):
     with app_env.session_scope() as s:
         case_id = make_case(s, **s0_overrides)

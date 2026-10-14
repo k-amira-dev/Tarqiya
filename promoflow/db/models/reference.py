@@ -1,4 +1,9 @@
-"""Reference data: policy versions, thresholds, rubrics, journal rankings, editable lists, policy text."""
+"""Reference data: policy versions, thresholds, rubrics, journal rankings, editable lists, policy text.
+
+"Reference data" is information the system looks up but applicants do not enter: the policy thresholds, the two
+scoring rubrics (Appendix E and F), journal rankings, dropdown lists and the policy text used for search. It is loaded by
+db/seed.py and meant to be changed by an admin, not by editing code.
+"""
 from datetime import date
 from decimal import Decimal
 

@@ -11,16 +11,21 @@ from promoflow.db.models import CaseDocument, Supervision
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section6.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a graduate supervision that the form edits. add() and update() copy exactly these from the form
+# values.
 FIELDS = ["student_name", "degree", "role", "thesis_title", "start_date", "status", "graduation_date"]
+# Name of the file slot that holds the evidence file of a graduate supervision.
 EVIDENCE_SLOT = "evidence"
 
 
+# A graduate supervision together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class SupervisionRow:
     supervision: Supervision
     evidence: CaseDocument | None
 
 
+# All of this case's graduate supervisions, each with its evidence file.
 def load(s: Session, case_id: int) -> list[SupervisionRow]:
     rows = s.scalars(select(Supervision).where(Supervision.case_id == case_id)
                      .order_by(Supervision.start_date.desc())).all()
@@ -29,6 +34,8 @@ def load(s: Session, case_id: int) -> list[SupervisionRow]:
            for sup in rows]
 
 
+# Check one graduate supervision's form BEFORE saving. Returns a list of messages for the applicant (an empty list
+# means valid).
 def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"student_name": "Student", "degree": "Degree", "role": "Supervision role",
@@ -45,6 +52,8 @@ def validate(values: dict, today: date, has_evidence: bool, evidence_upload=None
     return errors
 
 
+# Add a graduate supervision: refuse if the case is locked, create the row, attach the evidence file, and write an
+# audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     sup = Supervision(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -58,6 +67,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return sup.id
 
 
+# Edit a graduate supervision. A new file replaces the old one (the old one is kept as history); the audit log
+# records the values before and after.
 def update(s: Session, user_id: int, supervision_id: int, values: dict, evidence_upload=None) -> None:
     sup = s.get(Supervision, supervision_id)
     case = case_for_entity(s, sup.case_id)
@@ -73,6 +84,7 @@ def update(s: Session, user_id: int, supervision_id: int, values: dict, evidence
              entity_table="supervision", entity_id=sup.id, before=before, after=audit.snapshot(sup, FIELDS))
 
 
+# Delete a graduate supervision. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, supervision_id: int) -> None:
     sup = s.get(Supervision, supervision_id)
     case = case_for_entity(s, sup.case_id)

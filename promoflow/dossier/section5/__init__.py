@@ -12,6 +12,7 @@ from promoflow.dossier.section0 import active_case
 from promoflow.dossier.section5 import awards, books, classification, conference, creative, funded, papers, patents, scopus
 
 
+# Everything the Section 5 page needs: one list per kind of research entry.
 @dataclass(frozen=True)
 class Section5Context:
     case_id: int | None
@@ -28,6 +29,7 @@ class Section5Context:
     scopus: "scopus.Section5FContext"
 
 
+# Read all of Section 5 for the page, with the independent readers running together.
 def load(s: Session, user_id: int, today: date) -> Section5Context:
     case = active_case(s, user_id)
     if case is None:

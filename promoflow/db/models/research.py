@@ -1,4 +1,8 @@
-"""§5 Academic research entries. Computed results (journal class, counted or not) live in assessment tables."""
+"""§5 Academic research entries. Computed results (journal class, counted or not) live in assessment tables.
+
+These tables are what the Research Agent reads. The applicant types the facts; the agent's conclusions (journal class,
+counted or not) are saved separately in the assessment tables, never here.
+"""
 from datetime import date
 from decimal import Decimal
 

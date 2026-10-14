@@ -23,6 +23,8 @@ STUDENT = "SECRET STUDENT NAME"
 CODES = ["CS101", "CS201", "CS501"]
 
 
+# Stands in for the language model so the tests need no key, no internet and give the same answer every time. It
+# records every call and answers with whatever `respond` returns.
 class FakeLLM:
     """Stands in for the language model: records every call and answers with `respond(call_number, messages)`."""
 
@@ -37,10 +39,12 @@ class FakeLLM:
         return self.respond(len(self.calls), messages)
 
 
+# Read back the JSON evidence that the agent sent to the (fake) model.
 def payload(messages) -> dict:
     return json.loads(messages[1][1].split("\n\nYour previous")[0])
 
 
+# Build a model answer for every item that was sent: full points, citing the first piece of evidence.
 def judgment(messages, points=None, cited=None, confidence=Confidence.HIGH) -> TeachingJudgment:
     return TeachingJudgment(items=[
         ItemJudgment(item_no=i["item_no"], points=i["allowed_points"][1] if points is None else points,
@@ -52,6 +56,8 @@ def lk(s, list_code, code) -> int:
     return s.scalar(select(LookupValue.id).where(LookupValue.list_code == list_code, LookupValue.code == code))
 
 
+# Fill a case with realistic teaching entries. The observer and student names are made-up strings the privacy test
+# looks for.
 def add_teaching(s, case_id, *, courses=3, files_for=3, rich=True):
     ids = []
     for n, code in enumerate(CODES[:courses]):
@@ -93,6 +99,7 @@ def add_teaching(s, case_id, *, courses=3, files_for=3, rich=True):
     s.flush()
 
 
+# Create a case with teaching evidence and return its id and the agent's evidence context.
 def context(app_env, *, full=False, **kw):
     with app_env.session_scope() as s:
         overrides = {"track": PromotionTrack.TO_FULL, "rank_on_appointment": Rank.ASSOCIATE_PROFESSOR} if full else {}

@@ -1,4 +1,8 @@
-"""§6 Teaching & academic advising entries (Appendix E evidence)."""
+"""§6 Teaching & academic advising entries (Appendix E evidence).
+
+Each table feeds one or more lines of the Appendix E rubric, which the Teaching Agent scores (see
+workflow/nodes/teaching.py). Personal names (students, observers) are stored but never sent to the language model.
+"""
 from datetime import date
 from decimal import Decimal
 

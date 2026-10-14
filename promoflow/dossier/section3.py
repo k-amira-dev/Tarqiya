@@ -3,6 +3,16 @@
 Matches the "First: Academic Degrees Earned" table of Appendix I. Unlike Sections 0-2, this section is a
 list of child entries (add / edit / delete), the pattern later sections (ranks, research, teaching, service)
 will reuse.
+
+THE "LIST OF ENTRIES" PATTERN (sections 3 to 7 all work like this)
+Each entry has four functions: `load` (read the list), `validate_*` (check one entry's form, returning messages),
+and `add` / `update` / `delete`. Every writer does the same things in the same order:
+  1. find the case and refuse if it is locked (`CaseLocked`);
+  2. take a `snapshot` of the entry BEFORE the change;
+  3. change it and `flush` (send it to the database inside the transaction);
+  4. write an audit-log row with before and after (`audit.log`).
+Uploaded evidence files are attached through `documents.replace`, with a `slot` name to tell several files on one
+entry apart (a degree's "certificate" and its "equivalency" certificate).
 """
 from dataclasses import dataclass
 from datetime import date
@@ -15,14 +25,19 @@ from promoflow.db.models import CaseDocument, Degree, PromotionCase
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section0 import EDITABLE, CaseLocked, active_case
 
+# The columns of a degree that the form edits (copied back and forth by add/update).
 FIELDS = ["level", "specialization", "university", "country_code", "study_from", "study_to", "graduation_date",
          "thesis_title", "equivalency_required"]
+# Master's and PhD degrees need a thesis title.
 THESIS_LEVELS = {DegreeLevel.MASTER, DegreeLevel.PHD}
+# Degrees that count as a doctorate. The Eligibility Checker requires at least one.
 DOCTORATE_LEVELS = {DegreeLevel.PHD, DegreeLevel.OTHER_DOCTORATE}
+# Names for the two files a degree can have, so they can be told apart.
 CERT_SLOT = "certificate"
 EQUIVALENCY_SLOT = "equivalency"
 
 
+# A degree together with its two evidence files, ready for the page to show.
 @dataclass(frozen=True)
 class DegreeRow:
     degree: Degree
@@ -30,6 +45,7 @@ class DegreeRow:
     equivalency_certificate: CaseDocument | None
 
 
+# Everything the Section 3 page needs.
 @dataclass(frozen=True)
 class Section3Context:
     case_id: int | None
@@ -37,6 +53,7 @@ class Section3Context:
     degrees: list[DegreeRow]
 
 
+# Attach the two evidence files to one degree.
 def _row(s: Session, d: Degree) -> DegreeRow:
     return DegreeRow(
         d,
@@ -47,6 +64,7 @@ def _row(s: Session, d: Degree) -> DegreeRow:
     )
 
 
+# All of the applicant's degrees, oldest graduation first.
 def load(s: Session, user_id: int, today: date) -> Section3Context:
     case = active_case(s, user_id)
     if case is None:
@@ -56,10 +74,13 @@ def load(s: Session, user_id: int, today: date) -> Section3Context:
     return Section3Context(case.id, case.status, [_row(s, d) for d in degrees])
 
 
+# True if at least one degree is a doctorate.
 def has_doctorate(degrees: list[DegreeRow]) -> bool:
     return any(row.degree.level in DOCTORATE_LEVELS for row in degrees)
 
 
+# Check one degree's form. Returns a list of messages (empty = valid). Uploads are checked as 'new file chosen' OR
+# 'already has one'.
 def validate_degree(values: dict, has_certificate: bool, today: date,
                     cert_upload: tuple[str, bytes] | None = None,
                     equivalency_upload: tuple[str, bytes] | None = None,
@@ -88,6 +109,7 @@ def validate_degree(values: dict, has_certificate: bool, today: date,
     return errors
 
 
+# Add a degree with its certificate (required) and, optionally, an equivalency certificate.
 def add(s: Session, user_id: int, values: dict, cert_upload: tuple[str, bytes],
        equivalency_upload: tuple[str, bytes] | None = None) -> int:
     case = active_case(s, user_id)
@@ -96,6 +118,7 @@ def add(s: Session, user_id: int, values: dict, cert_upload: tuple[str, bytes],
     if case.status not in EDITABLE:
         raise CaseLocked("This application has been submitted and can no longer be edited.")
 
+    # Build the new row from the form values, using only the fields in FIELDS.
     degree = Degree(case_id=case.id, **{f: values.get(f) for f in FIELDS})
     s.add(degree)
     s.flush()
@@ -112,6 +135,7 @@ def add(s: Session, user_id: int, values: dict, cert_upload: tuple[str, bytes],
     return degree.id
 
 
+# Edit a degree; a new file replaces the old one (the old one is kept as history).
 def update(s: Session, user_id: int, degree_id: int, values: dict,
           cert_upload: tuple[str, bytes] | None = None,
           equivalency_upload: tuple[str, bytes] | None = None) -> None:
@@ -136,6 +160,7 @@ def update(s: Session, user_id: int, degree_id: int, values: dict,
              entity_id=degree.id, before=before, after=audit.snapshot(degree, FIELDS))
 
 
+# Remove a degree. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, degree_id: int) -> None:
     degree = s.get(Degree, degree_id)
     case = s.get(PromotionCase, degree.case_id)

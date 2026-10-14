@@ -12,18 +12,25 @@ from promoflow.db.models import CaseDocument, CommunityActivity
 from promoflow.dossier import audit, documents
 from promoflow.dossier.section7.common import CaseLocked, case_for_entity, case_for_new_entry
 
+# The columns of a community activity that the form edits. add() and update() copy exactly these from the form
+# values.
 FIELDS = ["activity_type_id", "funded_project_id", "title", "beneficiary_organisation", "applicant_role",
          "date_from", "date_to", "beneficiaries", "deliverables", "measurable_outcome"]
+# Name of the file slot that holds the evidence file of a community activity.
 EVIDENCE_SLOT = "evidence"
+# Activity types that are funded projects. Those must be linked to a project entered once in Section 5D, so it is
+# scored only once.
 FUNDED_PROJECT_CODES = {"funded_company", "funded_government", "funded_university"}
 
 
+# A community activity together with its evidence file, ready for the page to show.
 @dataclass(frozen=True)
 class CommunityActivityRow:
     activity: CommunityActivity
     evidence: CaseDocument | None
 
 
+# All of this case's community activities, each with its evidence file.
 def load(s: Session, case_id: int) -> list[CommunityActivityRow]:
     rows = s.scalars(select(CommunityActivity).where(CommunityActivity.case_id == case_id)
                      .order_by(CommunityActivity.date_from.desc())).all()
@@ -33,6 +40,8 @@ def load(s: Session, case_id: int) -> list[CommunityActivityRow]:
            for a in rows]
 
 
+# Check one community activity's form BEFORE saving. Returns a list of messages for the applicant (an empty list
+# means valid).
 def validate(values: dict, is_funded_project: bool, has_evidence: bool, evidence_upload=None) -> list[str]:
     errors = []
     required = {"activity_type_id": "Activity type", "title": "Title",
@@ -51,6 +60,8 @@ def validate(values: dict, is_funded_project: bool, has_evidence: bool, evidence
     return errors
 
 
+# Add a community activity: refuse if the case is locked, create the row, attach the evidence file, and write an
+# audit-log entry.
 def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, bytes]) -> int:
     case = case_for_new_entry(s, user_id)
     a = CommunityActivity(case_id=case.id, **{f: values.get(f) for f in FIELDS})
@@ -64,6 +75,8 @@ def add(s: Session, user_id: int, values: dict, evidence_upload: tuple[str, byte
     return a.id
 
 
+# Edit a community activity. A new file replaces the old one (the old one is kept as history); the audit log records
+# the values before and after.
 def update(s: Session, user_id: int, activity_id: int, values: dict, evidence_upload=None) -> None:
     a = s.get(CommunityActivity, activity_id)
     case = case_for_entity(s, a.case_id)
@@ -79,6 +92,7 @@ def update(s: Session, user_id: int, activity_id: int, values: dict, evidence_up
              entity_table="community_activity", entity_id=a.id, before=before, after=audit.snapshot(a, FIELDS))
 
 
+# Delete a community activity. The audit log keeps what it contained.
 def delete(s: Session, user_id: int, activity_id: int) -> None:
     a = s.get(CommunityActivity, activity_id)
     case = case_for_entity(s, a.case_id)
