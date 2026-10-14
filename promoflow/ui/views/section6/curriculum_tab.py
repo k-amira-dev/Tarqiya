@@ -51,6 +51,7 @@ def _summary(row: s6d.CurriculumRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s6d.CurriculumRow | None") -> None:
     c = row.contribution if row else None
     prefix = f"s6d_f_{c.id if c else 'new'}_"

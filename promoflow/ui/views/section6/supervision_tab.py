@@ -50,6 +50,7 @@ def _summary(row: s6h.SupervisionRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s6h.SupervisionRow | None") -> None:
     sup = row.supervision if row else None
     prefix = f"s6h_f_{sup.id if sup else 'new'}_"

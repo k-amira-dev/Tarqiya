@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from promoflow.db.models import CourseTaught, PromotionCase
 from promoflow.dossier.section0 import EDITABLE, CaseLocked, active_case
 
-__all__ = ["CaseLocked", "case_for_new_entry", "case_for_entity", "course_options"]
+__all__ = ["CaseLocked", "case_for_new_entry", "case_for_entity", "course_options", "course_options_from"]
 
 
 def case_for_new_entry(s: Session, user_id: int) -> PromotionCase:
@@ -25,9 +25,13 @@ def case_for_entity(s: Session, case_id: int) -> PromotionCase:
     return case
 
 
-def course_options(s: Session, case_id: int) -> dict[int, str]:
-    """§6A rows, for the "Course" link field in 6B, 6C, 6F and 6G."""
-    courses = s.scalars(select(CourseTaught).where(CourseTaught.case_id == case_id)
-                        .order_by(CourseTaught.academic_year.desc())).all()
+def course_options_from(courses: list[CourseTaught]) -> dict[int, str]:
+    """§6A rows as labels, for the "Course" link field in 6B, 6C, 6F and 6G."""
     return {c.id: f"{c.course_code} · {c.course_title} ({c.academic_year} {c.semester.value.capitalize()})"
            for c in courses}
+
+
+def course_options(s: Session, case_id: int) -> dict[int, str]:
+    courses = s.scalars(select(CourseTaught).where(CourseTaught.case_id == case_id)
+                        .order_by(CourseTaught.academic_year.desc())).all()
+    return course_options_from(list(courses))

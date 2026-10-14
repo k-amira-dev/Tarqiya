@@ -1,10 +1,12 @@
 """Admin-editable dropdown lists used across Section 5's tabs (spec §15), loaded as {id: label} maps."""
+import streamlit as st
 from sqlalchemy import select
 
 from promoflow.db.models import LookupValue
 from promoflow.db.session import session_scope
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def _options(list_code: str) -> dict[int, str]:
     with session_scope() as s:
         rows = s.scalars(select(LookupValue).where(LookupValue.list_code == list_code, LookupValue.active.is_(True))

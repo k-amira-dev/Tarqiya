@@ -3,6 +3,7 @@
 The applicant sees these as a *preview* while filling in the form; the Eligibility Checker re-runs them on
 submission with the full dossier (e.g. rank history from §4).
 """
+import math
 import re
 from dataclasses import dataclass
 from datetime import date
@@ -45,8 +46,26 @@ class Window:
     open_now: bool
 
 
+def _add_years(d: date, years: int) -> date:
+    try:
+        return d.replace(year=d.year + years)
+    except ValueError:  # 29 February in a non-leap year
+        return d.replace(year=d.year + years, day=28)
+
+
 def years_between(start: date, end: date) -> float:
-    return (end - start).days / 365.25
+    """Whole calendar years plus the fraction of the current year. Exactly five years after a date is 5.0, whatever
+    the leap days in between (dividing days by 365.25 made five full years come out as 4.9993 and fail the minimum)."""
+    if end < start:
+        return -years_between(end, start)
+    whole = end.year - start.year - ((end.month, end.day) < (start.month, start.day))
+    anniversary, next_anniversary = _add_years(start, whole), _add_years(start, whole + 1)
+    return whole + (end - anniversary).days / (next_anniversary - anniversary).days
+
+
+def _fmt(years: float) -> str:
+    """One decimal, rounded down, so 4.997 years reads '4.9' and never '5.0' next to a minimum of 5."""
+    return f"{math.floor(years * 10) / 10:.1f}"
 
 
 def next_submission_window(today: date) -> Window:
@@ -87,21 +106,21 @@ def section0_checks(*, track: PromotionTrack | None, current_rank_date: date | N
         yrs = years_between(current_rank_date, on)
         short_months = (need - yrs) * 12
         if yrs >= need:
-            checks.append(Check("Time in current rank", "ok", f"{yrs:.1f} years (minimum {need}).", "p.13–14"))
+            checks.append(Check("Time in current rank", "ok", f"{_fmt(yrs)} years (minimum {need}).", "p.13–14"))
         elif early_application and short_months <= criteria.early_application_months:
             checks.append(Check("Time in current rank", "ok",
-                                f"{yrs:.1f} years: early application, completes {need} years within "
+                                f"{_fmt(yrs)} years: early application, completes {need} years within "
                                 f"{criteria.early_application_months} months.", "p.24"))
         elif exceptional_case and yrs >= criteria.exceptional_min_years:
             checks.append(Check("Time in current rank", "warn",
-                                f"{yrs:.1f} years: exceptional-case request. The Head of Department decides.", "p.24"))
+                                f"{_fmt(yrs)} years: exceptional-case request. The Head of Department decides.", "p.24"))
         elif early_application:
             checks.append(Check("Time in current rank", "fail",
-                                f"{yrs:.1f} years: an early application must complete {need} years within "
+                                f"{_fmt(yrs)} years: an early application must complete {need} years within "
                                 f"{criteria.early_application_months} months of submission.", "p.24"))
         else:
             checks.append(Check("Time in current rank", "fail",
-                                f"{yrs:.1f} years; the minimum is {need}. Consider a later window.", "p.13–14"))
+                                f"{_fmt(yrs)} years; the minimum is {need}. Consider a later window.", "p.13–14"))
 
     if current_rank_date and appointment_date:
         start = max(current_rank_date, appointment_date)
@@ -110,7 +129,7 @@ def section0_checks(*, track: PromotionTrack | None, current_rank_date: date | N
         checks.append(Check(
             "Years at this university in current rank",
             "ok" if yrs_here >= need_here else "fail",
-            f"{yrs_here:.1f} years (minimum {need_here}). Confirmed later against your rank history (§4).",
+            f"{_fmt(yrs_here)} years (minimum {need_here}). Confirmed later against your rank history (§4).",
             "p.13–14",
         ))
 
@@ -123,7 +142,7 @@ def section0_checks(*, track: PromotionTrack | None, current_rank_date: date | N
             checks.append(Check(
                 "Reapplication",
                 "ok" if ok else "fail",
-                (f"{gap:.1f} years since the decision (minimum {criteria.reapply_min_years}). You also need "
+                (f"{_fmt(gap)} years since the decision (minimum {criteria.reapply_min_years}). You also need "
                  f"{criteria.reapply_new_publications} new publications (≥{criteria.reapply_new_class_a} Class A, "
                  f"≥{criteria.reapply_new_main_author} main-author), checked in §5A."),
                 "p.12, p.24",

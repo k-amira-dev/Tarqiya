@@ -49,6 +49,7 @@ def _summary(row: s5g.PatentRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s5g.PatentRow | None") -> None:
     p = row.patent if row else None
     prefix = f"s5g_f_{p.id if p else 'new'}_"

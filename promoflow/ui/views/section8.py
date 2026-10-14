@@ -4,7 +4,7 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier import section8 as s8
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 from promoflow.ui.views.section7.lookups import recommendation_relationship_options
 
 K = "s8_"
@@ -12,8 +12,7 @@ K = "s8_"
 
 def render() -> None:
     user = st.session_state["current_user"]
-    with session_scope() as s:
-        ctx = s8.load(s, user.id)
+    ctx = cache.load_cached(f"pfc:s8:{user.id}", lambda s: s8.load(s, user.id))
 
     theme.html("""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 8 OF 11</div>
@@ -60,6 +59,7 @@ def _summary(row: s8.RecommendationLetterRow, relationships: dict, editable: boo
                 st.rerun()
 
 
+@st.fragment
 def _form() -> None:
     relationships = recommendation_relationship_options()
     rel_ids = [r.id for r in relationships]

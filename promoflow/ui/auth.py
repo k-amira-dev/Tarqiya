@@ -3,6 +3,7 @@
 The session token is kept in st.session_state and in a browser cookie, so a page refresh (which starts a
 new Streamlit session) does not log the user out. Only the token's hash is in the database.
 """
+import time
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -17,9 +18,11 @@ from promoflow.config import DATABASE_URL, SESSION_HOURS
 from promoflow.db.enums import RoleName
 from promoflow.db.models import User
 from promoflow.db.session import session_scope
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 
 COOKIE = "promoflow_session"
+USER_CACHE_KEY = "pf_user_cache"
+USER_TTL_SECONDS = 120  # how long a revoked session can keep working; saves 3 queries on every page change
 
 ROLE_LABELS = {
     RoleName.APPLICANT: "Applicant", RoleName.HOD: "Head of Department", RoleName.DEAN: "Dean",
@@ -140,13 +143,26 @@ def require_login(*allowed: RoleName) -> CurrentUser:
         st.stop()
 
 
+def _cached_user(token: str | None) -> CurrentUser | None:
+    """`_load` costs three round trips, so reuse its result until a write happens or the TTL passes."""
+    version = st.session_state.get(cache.VERSION_KEY, 0)
+    hit = st.session_state.get(USER_CACHE_KEY)
+    if token and hit and hit[0] == token and hit[1] == version and time.monotonic() - hit[2] < USER_TTL_SECONDS:
+        return hit[3]
+    user = _load(token)
+    if user is not None:
+        st.session_state[USER_CACHE_KEY] = (token, version, time.monotonic(), user)
+    return user
+
+
 def _gate(allowed: tuple[RoleName, ...]) -> CurrentUser:
     token = st.session_state.get("token") or st.context.cookies.get(COOKIE)
     if not isinstance(token, str):  # no cookie context (e.g. headless tests) or malformed value
         token = None
-    user = _load(token)
+    user = _cached_user(token)
     if user is None:
         st.session_state.pop("token", None)
+        st.session_state.pop(USER_CACHE_KEY, None)
         _login_form()
         st.stop()
     st.session_state["token"] = token
@@ -163,5 +179,7 @@ def logout() -> None:
     with session_scope() as s:
         revoke_session(s, st.session_state.get("token"))
     st.session_state.pop("token", None)
+    st.session_state.pop(USER_CACHE_KEY, None)
+    cache.clear()
     _write_cookie("", 0)
     st.rerun()

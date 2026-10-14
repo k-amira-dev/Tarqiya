@@ -48,6 +48,7 @@ def _summary(row: s6b.PeerObservationRow, course_options: dict[int, str], editab
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, course_options: dict[int, str], row: "s6b.PeerObservationRow | None") -> None:
     o = row.observation if row else None
     prefix = f"s6b_f_{o.id if o else 'new'}_"

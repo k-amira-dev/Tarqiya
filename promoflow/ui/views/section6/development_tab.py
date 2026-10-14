@@ -53,6 +53,7 @@ def _summary(row: s6i.DevelopmentRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s6i.DevelopmentRow | None") -> None:
     d = row.activity if row else None
     prefix = f"s6i_f_{d.id if d else 'new'}_"

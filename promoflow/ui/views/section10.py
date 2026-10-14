@@ -6,7 +6,7 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier import section10 as s10
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 
 K = "s10_"
 
@@ -14,8 +14,7 @@ K = "s10_"
 def render() -> None:
     user = st.session_state["current_user"]
     today = date.today()
-    with session_scope() as s:
-        ctx = s10.load(s, user.id)
+    ctx = cache.load_cached(f"pfc:s10:{user.id}", lambda s: s10.load(s, user.id))
 
     theme.html("""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 10 OF 11</div>
@@ -33,6 +32,11 @@ def render() -> None:
     if not editable:
         st.info("This application has been submitted, so Section 10 is read-only.", icon=":material/lock:")
 
+    _form(ctx, user.id, today, editable)
+
+
+@st.fragment
+def _form(ctx, user_id: int, today: date, editable: bool) -> None:
     with st.container(key="card_cover_letter"):
         theme.card_header("01", "Signed cover letter")
         if ctx.document is not None:
@@ -56,7 +60,7 @@ def render() -> None:
             return
         try:
             with session_scope() as s:
-                s10.save(s, user.id, cover_letter_signed_date, upload_tuple)
+                s10.save(s, user_id, cover_letter_signed_date, upload_tuple)
         except s10.CaseLocked as e:
             st.error(str(e))
             return

@@ -2,6 +2,7 @@
 UI can both display a label and branch on the underlying code (e.g. "is this a course modification?")."""
 from dataclasses import dataclass
 
+import streamlit as st
 from sqlalchemy import select
 
 from promoflow.db.models import LookupValue
@@ -15,6 +16,7 @@ class Option:
     label: str
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def _options(list_code: str) -> list[Option]:
     with session_scope() as s:
         rows = s.scalars(select(LookupValue).where(LookupValue.list_code == list_code, LookupValue.active.is_(True))

@@ -47,6 +47,7 @@ def _summary(row: s5c.ConferencePaperRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s5c.ConferencePaperRow | None") -> None:
     p = row.paper if row else None
     prefix = f"s5c_f_{p.id if p else 'new'}_"

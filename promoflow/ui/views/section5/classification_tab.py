@@ -4,7 +4,7 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier.section5 import classification as s5e
 from promoflow.dossier.section5 import papers as s5p
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 from promoflow.ui.views.section5.papers_tab import CLASS_LABEL
 
 K = "s5e_"
@@ -27,8 +27,7 @@ def render(paper_rows: list[s5p.PublicationRow], case_id: int, editable: bool) -
                         f'<small>ISSN {theme.esc(j.issn or "—")} · {theme.esc(label)}</small></div></div>')
             theme.html(rows)
 
-        with session_scope() as s:
-            signed = s5e.signed_form(s, case_id)
+        signed = cache.load_cached(f"pfc:signedcls:{case_id}", lambda s: s5e.signed_form(s, case_id))
         if signed is not None:
             theme.html(f'<div class="pf-note">Current signed form: {theme.esc(signed.original_filename)}, '
                       f'uploaded {signed.uploaded_at:%d %b %Y}.</div>')

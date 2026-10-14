@@ -65,9 +65,13 @@ def rank_years(r: RankHistory, today: date) -> float:
 
 
 def section_checks(ranks: list[RankRow], current_rank: Rank | None) -> list[str]:
+    return rank_entry_checks([row.rank for row in ranks], current_rank)
+
+
+def rank_entry_checks(entries: list[RankHistory], current_rank: Rank | None) -> list[str]:
     """Section-level problems shown as a banner, not blocking a single entry's save (spec §8 validation note)."""
     problems = []
-    ordered = sorted((row.rank for row in ranks), key=lambda r: r.held_from)
+    ordered = sorted(entries, key=lambda r: r.held_from)
     current_entries = [r for r in ordered if r.held_to is None]
     if len(current_entries) > 1:
         problems.append("Only one rank entry can be marked as current (no end date).")

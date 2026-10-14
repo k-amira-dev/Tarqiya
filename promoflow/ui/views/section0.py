@@ -10,7 +10,7 @@ from promoflow.rules.eligibility import (
     CURRENT_RANK_FOR, MAX_JUSTIFICATION, TARGET_RANK_FOR, section0_checks, validate_section0, years_between,
     assumed_submission_date,
 )
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 
 RANK_LABEL = {Rank.LECTURER: "Lecturer", Rank.ASSISTANT_PROFESSOR: "Assistant Professor",
               Rank.ASSOCIATE_PROFESSOR: "Associate Professor", Rank.PROFESSOR: "Professor"}
@@ -58,8 +58,7 @@ def _values() -> dict:
 def render() -> None:
     user = st.session_state["current_user"]
     today = date.today()
-    with session_scope() as s:
-        ctx = s0.load(s, user.id, today)
+    ctx = cache.load_cached(f"pfc:s0:{user.id}", lambda s: s0.load(s, user.id, today))
     _prefill(ctx, today)
     editable = ctx.status in (None, CaseStatus.DRAFT, CaseStatus.RETURNED_FOR_REVISION)
     chip_text, chip_cls = STATUS_CHIP.get(ctx.status, (ctx.status.value.replace("_", " ").capitalize()
@@ -77,6 +76,12 @@ def render() -> None:
     if not editable:
         st.info("This application has been submitted, so Section 0 is read-only.", icon=":material/lock:")
 
+    _form(ctx, user.id, today, editable)
+
+
+@st.fragment
+def _form(ctx, user_id: int, today: date, editable: bool) -> None:
+    """Only this part re-runs while typing: no database access, just the widgets and the live preview."""
     left, right = st.columns([2.05, 1], gap="large")
     with left:
         _identity_card(ctx, today, editable)
@@ -85,7 +90,7 @@ def render() -> None:
         _identifiers_card(editable)
         _special_card(editable)
         if editable:
-            _save_bar(user.id, today)
+            _save_bar(user_id, today)
     with right:
         _glance_card(ctx, today)
 

@@ -46,6 +46,7 @@ def _summary(row: s6f.CourseFileRow, course_options: dict[int, str], editable: b
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, course_options: dict[int, str], row: "s6f.CourseFileRow | None") -> None:
     f = row.course_file if row else None
     prefix = f"s6f_f_{f.id if f else 'new'}_"

@@ -8,7 +8,7 @@ from promoflow.db.enums import DegreeLevel
 from promoflow.db.session import session_scope
 from promoflow.dossier import section3 as s3
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 
 K = "s3_"
 LEVEL_LABEL = {DegreeLevel.BACHELOR: "Bachelor", DegreeLevel.MASTER: "Master", DegreeLevel.PHD: "PhD",
@@ -18,8 +18,7 @@ LEVEL_LABEL = {DegreeLevel.BACHELOR: "Bachelor", DegreeLevel.MASTER: "Master", D
 def render() -> None:
     user = st.session_state["current_user"]
     today = date.today()
-    with session_scope() as s:
-        ctx = s3.load(s, user.id, today)
+    ctx = cache.load_cached(f"pfc:s3:{user.id}", lambda s: s3.load(s, user.id, today))
 
     theme.html("""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 3 OF 11</div>
@@ -82,6 +81,7 @@ def _entry_summary(row: s3.DegreeRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _entry_form(case_id: int, today: date, editable: bool, row: "s3.DegreeRow | None") -> None:
     d = row.degree if row else None
     prefix = f"s3_f_{d.id if d else 'new'}_"

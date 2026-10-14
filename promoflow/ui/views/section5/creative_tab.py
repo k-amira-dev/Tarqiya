@@ -48,6 +48,7 @@ def _summary(row: s5c.CreativeWorkRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s5c.CreativeWorkRow | None") -> None:
     w = row.work if row else None
     prefix = f"s5a2_f_{w.id if w else 'new'}_"

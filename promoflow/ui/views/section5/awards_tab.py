@@ -47,6 +47,7 @@ def _summary(row: s5h.AwardRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s5h.AwardRow | None") -> None:
     a = row.award if row else None
     prefix = f"s5h_f_{a.id if a else 'new'}_"

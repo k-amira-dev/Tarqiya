@@ -6,7 +6,8 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier import section11 as s11
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
+from promoflow.workflow import service
 
 K = "s11_"
 ICON = {"ok": "✓", "warn": "!", "fail": "✕", "info": "i"}
@@ -15,8 +16,7 @@ ICON = {"ok": "✓", "warn": "!", "fail": "✕", "info": "i"}
 def render() -> None:
     user = st.session_state["current_user"]
     today = date.today()
-    with session_scope() as s:
-        ctx = s11.load(s, user.id, today)
+    ctx = cache.load_cached(f"pfc:s11:{user.id}", lambda s: s11.load(s, user.id, today))
 
     theme.html("""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 11 OF 11</div>
@@ -99,13 +99,18 @@ def _submit_card(ctx: s11.Section11Context, user_id: int, today: date) -> None:
         submit_disabled = not (ctx.can_submit and declared)
         if st.button("Submit application", type="primary", icon=":material/send:", key=K + "submit",
                     disabled=submit_disabled, use_container_width=True):
+            case_id = ctx.case_id
             try:
                 with session_scope() as s:
                     s11.submit(s, user_id, today)
             except s11.CaseLocked as e:
                 st.error(str(e))
                 return
-            st.session_state[K + "flash"] = "Application submitted."
+            try:   # hand the submitted case to the agents; it runs in the background and never blocks this page
+                service.start_review(case_id)
+                st.session_state[K + "flash"] = "Application submitted. The review has started."
+            except Exception as e:   # the submission itself is saved; a person can restart the review
+                st.session_state[K + "flash"] = f"Application submitted, but the review could not start: {e}"
             st.rerun()
         if not ctx.can_submit:
             st.caption("Complete every required section and wait for a submission window to enable this button.")

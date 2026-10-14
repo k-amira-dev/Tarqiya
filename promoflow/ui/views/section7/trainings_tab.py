@@ -46,6 +46,7 @@ def _summary(row: s7a4.TrainingRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s7a4.TrainingRow | None") -> None:
     t = row.training if row else None
     prefix = f"s7a4_f_{t.id if t else 'new'}_"

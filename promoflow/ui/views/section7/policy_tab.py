@@ -49,6 +49,7 @@ def _summary(row: s7a5.PolicyContributionRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s7a5.PolicyContributionRow | None") -> None:
     p = row.contribution if row else None
     prefix = f"s7a5_f_{p.id if p else 'new'}_"

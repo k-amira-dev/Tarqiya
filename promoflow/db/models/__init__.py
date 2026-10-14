@@ -47,4 +47,7 @@ SQLITE_TABLES = AUTH_TABLES + [
     CommitteeMembership.__table__, AdministrativePosition.__table__, WorkshopDelivered.__table__,
     TrainingDelivered.__table__, PolicyContribution.__table__, CommunityActivity.__table__,
     RecommendationLetter.__table__,
+    # Agent outputs that run on SQLite (claim and rubric_score still need PostgreSQL-only types).
+    AgentRun.__table__, AgentAssessment.__table__, CriterionResult.__table__, ItemResult.__table__, Flag.__table__,
+    CaseReport.__table__, GateDecision.__table__, RubricScore.__table__,
 ]

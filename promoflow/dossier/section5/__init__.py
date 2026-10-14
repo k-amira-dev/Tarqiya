@@ -7,6 +7,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from promoflow.db.enums import CaseStatus
+from promoflow.db.session import parallel
 from promoflow.dossier.section0 import active_case
 from promoflow.dossier.section5 import awards, books, classification, conference, creative, funded, papers, patents, scopus
 
@@ -31,9 +32,13 @@ def load(s: Session, user_id: int, today: date) -> Section5Context:
     case = active_case(s, user_id)
     if case is None:
         return Section5Context(None, None, None, False, [], [], [], [], [], [], [], scopus.Section5FContext(None, None))
-    return Section5Context(
-        case.id, case.status, case.current_rank_date, bool(case.previously_rejected),
-        papers.load(s, case.id), creative.load(s, case.id), books.load(s, case.id),
-        conference.load(s, case.id), funded.load(s, case.id), patents.load(s, case.id),
-        awards.load(s, case.id), scopus.load(s, case.id),
-    )
+    cid = case.id
+    (paper_rows, creative_rows, book_rows, conference_rows, funded_rows, patent_rows, award_rows,
+     scopus_ctx) = parallel(
+        lambda sess: papers.load(sess, cid), lambda sess: creative.load(sess, cid),
+        lambda sess: books.load(sess, cid), lambda sess: conference.load(sess, cid),
+        lambda sess: funded.load(sess, cid), lambda sess: patents.load(sess, cid),
+        lambda sess: awards.load(sess, cid), lambda sess: scopus.load(sess, cid))
+    return Section5Context(case.id, case.status, case.current_rank_date, bool(case.previously_rejected),
+                           paper_rows, creative_rows, book_rows, conference_rows, funded_rows, patent_rows,
+                           award_rows, scopus_ctx)

@@ -48,6 +48,7 @@ def _summary(row: s7a2.AdminPositionRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s7a2.AdminPositionRow | None") -> None:
     p = row.position if row else None
     prefix = f"s7a2_f_{p.id if p else 'new'}_"

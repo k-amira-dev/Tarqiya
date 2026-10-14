@@ -50,6 +50,7 @@ def _summary(row: s7a1.CommitteeRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s7a1.CommitteeRow | None") -> None:
     m = row.membership if row else None
     prefix = f"s7a1_f_{m.id if m else 'new'}_"

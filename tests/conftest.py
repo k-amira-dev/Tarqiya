@@ -28,8 +28,10 @@ def app_env(tmp_path, monkeypatch):
     import promoflow.db.seed
     import promoflow.db.session
     import promoflow.ui.auth
+    import promoflow.ui.cache
     import promoflow.ui.shell
     import promoflow.ui.views.dashboard
+    import promoflow.ui.views.reviews
     import promoflow.ui.views.section0
     import promoflow.ui.views.section1
     import promoflow.ui.views.section2
@@ -42,8 +44,9 @@ def app_env(tmp_path, monkeypatch):
     import promoflow.ui.views.section9
     import promoflow.ui.views.section10
     import promoflow.ui.views.section11
-    for mod in (promoflow.config, promoflow.db.session, promoflow.db.seed, promoflow.ui.auth,
-                promoflow.ui.views.dashboard, promoflow.ui.views.section0, promoflow.ui.views.section1,
+    for mod in (promoflow.config, promoflow.db.session, promoflow.db.seed, promoflow.ui.cache, promoflow.ui.auth,
+                promoflow.ui.views.dashboard, promoflow.ui.views.reviews, promoflow.ui.views.section0,
+                promoflow.ui.views.section1,
                 promoflow.ui.views.section2, promoflow.ui.views.section3, promoflow.ui.views.section4,
                 promoflow.ui.views.section5, promoflow.ui.views.section6, promoflow.ui.views.section7,
                 promoflow.ui.views.section8, promoflow.ui.views.section9, promoflow.ui.views.section10,

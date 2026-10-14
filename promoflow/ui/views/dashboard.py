@@ -5,9 +5,13 @@ import streamlit as st
 
 from promoflow.db.enums import RoleName
 from promoflow.dossier import section0 as s0
-from promoflow.db.session import session_scope
 from promoflow.rules.eligibility import next_submission_window
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
+
+
+def _case_status(s, user_id: int) -> str | None:
+    case = s0.active_case(s, user_id)
+    return case.status.value if case else None
 
 
 def render() -> None:
@@ -22,9 +26,8 @@ def render() -> None:
     without a person approving it.</p></div>""")
 
     if user.has(RoleName.APPLICANT):
-        with session_scope() as s:
-            case = s0.active_case(s, user.id)
-            status = case.status.value.replace("_", " ").capitalize() if case else "Not started"
+        case_status = cache.load_cached(f"pfc:status:{user.id}", lambda s: _case_status(s, user.id))
+        status = case_status.replace("_", " ").capitalize() if case_status else "Not started"
         window = (f"Open now until {w.end:%d %b}" if w.open_now else f"{w.start:%d}–{w.end:%d %b %Y}")
         theme.html(f"""
         <div class="pf-tiles">
@@ -41,6 +44,12 @@ def render() -> None:
     else:
         theme.html("""
         <div class="pf-tiles">
-          <div class="pf-tile hi"><h4>Reviews</h4><p>Cases waiting for your decision will appear here.</p></div>
-          <div class="pf-tile"><h4>Coming soon</h4><p>Review pages are the next part of PromoFlow to be built.</p></div>
+          <div class="pf-tile hi"><h4>Reviews</h4><p>Cases waiting for your decision appear under Reviews. The agents
+            prepare a report for each one; you approve it or return it to the applicant.</p></div>
+          <div class="pf-tile"><h4>Coming soon</h4><p>Referee selection for the Chancellor is the next part of PromoFlow
+            to be built.</p></div>
         </div>""")
+        if "reviews" in st.session_state["pf_pages"]:
+            st.write("")
+            if st.button("Open cases awaiting my decision  →", type="primary"):
+                st.switch_page(st.session_state["pf_pages"]["reviews"])

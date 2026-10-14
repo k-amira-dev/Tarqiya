@@ -6,7 +6,7 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier import section5 as s5
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 from promoflow.ui.views.section5 import (
     awards_tab, books_tab, classification_tab, conference_tab, creative_tab, funded_tab, papers_tab, patents_tab,
     scopus_tab,
@@ -16,8 +16,7 @@ from promoflow.ui.views.section5 import (
 def render() -> None:
     user = st.session_state["current_user"]
     today = date.today()
-    with session_scope() as s:
-        ctx = s5.load(s, user.id, today)
+    ctx = cache.load_cached(f"pfc:s5:{user.id}", lambda s: s5.load(s, user.id, today))
 
     theme.html("""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 5 OF 11</div>

@@ -45,6 +45,7 @@ def _summary(row: s6e.AdvisingRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s6e.AdvisingRow | None") -> None:
     a = row.semester if row else None
     prefix = f"s6e_f_{a.id if a else 'new'}_"

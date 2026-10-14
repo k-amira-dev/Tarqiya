@@ -35,18 +35,16 @@ def _json(v):
     return v.value if hasattr(v, "value") else v
 
 
-def _count(s: Session, model, case_id: int) -> int:
-    return s.scalar(select(func.count()).select_from(model).where(model.case_id == case_id)) or 0
-
-
 def research_item_count(s: Session, case_id: int) -> int:
-    """§5.2: entries in §5A, 5A-2, 5B, 5C, 5G. §5A honours its own "submit for promotion" flag; the other
-    entry types (not built yet) don't have one, so every row counts until that flag exists for them too."""
-    n = s.scalar(select(func.count()).select_from(Publication)
-                .where(Publication.case_id == case_id, Publication.submit_for_promotion.is_(True))) or 0
-    for model in (CreativeWork, Book, ConferencePaper, Patent):
-        n += _count(s, model, case_id)
-    return n
+    """§5.2: entries in §5A, 5A-2, 5B, 5C, 5G, in one query. §5A honours its own "submit for promotion" flag; the
+    other entry types (not built yet) don't have one, so every row counts until that flag exists for them too."""
+    def count(model, *conditions):
+        return select(func.count()).select_from(model).where(model.case_id == case_id, *conditions).scalar_subquery()
+
+    counts = s.execute(select(
+        count(Publication, Publication.submit_for_promotion.is_(True)), count(CreativeWork), count(Book),
+        count(ConferencePaper), count(Patent))).one()
+    return sum(c or 0 for c in counts)
 
 
 def _signed_document(s: Session, case_id: int) -> CaseDocument | None:

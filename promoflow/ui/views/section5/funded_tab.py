@@ -50,6 +50,7 @@ def _summary(row: s5d.FundedProjectRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, row: "s5d.FundedProjectRow | None") -> None:
     p = row.project if row else None
     prefix = f"s5d_f_{p.id if p else 'new'}_"

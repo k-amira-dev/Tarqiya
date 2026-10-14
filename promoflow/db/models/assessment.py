@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text,
+    JSON, BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text,
     UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
@@ -142,7 +142,7 @@ class CaseReport(CaseChildMixin, Base):
 
     version: Mapped[int] = mapped_column(Integer)
     overall_pass: Mapped[bool | None] = mapped_column(Boolean)
-    content: Mapped[dict] = mapped_column(JSONB)
+    content: Mapped[dict] = mapped_column(JSONB().with_variant(JSON(), "sqlite"))
     rendered_path: Mapped[str | None] = mapped_column(String(500))
 
 
@@ -160,7 +160,8 @@ class GateDecision(CaseChildMixin, Base):
     decided_by: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
     outcome: Mapped[GateOutcome] = mapped_column(pg_enum(GateOutcome))
     comment: Mapped[str | None] = mapped_column(Text)
-    sections_to_revise: Mapped[list[str] | None] = mapped_column(ARRAY(String(8)))  # only these unlock
+    sections_to_revise: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String(8)).with_variant(JSON(), "sqlite"))  # only these unlock
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

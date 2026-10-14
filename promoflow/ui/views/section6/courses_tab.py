@@ -72,6 +72,7 @@ def _summary(c: CourseTaught, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, c: "CourseTaught | None") -> None:
     prefix = f"s6a_f_{c.id if c else 'new'}_"
     with st.container(key=f"card_course_form_{c.id if c else 'new'}"):

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from promoflow.db.enums import CaseStatus
+from promoflow.db.session import parallel
 from promoflow.dossier.section0 import active_case
 from promoflow.dossier.section6 import (
     advising, course_files, courses, curriculum, development, innovation, peer_observations, satisfaction,
@@ -33,9 +34,11 @@ def load(s: Session, user_id: int) -> Section6Context:
     case = active_case(s, user_id)
     if case is None:
         return Section6Context(None, None, [], [], [], [], [], [], [], [], [], None)
-    return Section6Context(
-        case.id, case.status, courses.load(s, case.id), peer_observations.load(s, case.id),
-        satisfaction.load(s, case.id), curriculum.load(s, case.id), advising.load(s, case.id),
-        course_files.load(s, case.id), innovation.load(s, case.id), supervision.load(s, case.id),
-        development.load(s, case.id), courses.registrar_report(s, case.id),
-    )
+    cid = case.id
+    results = parallel(
+        lambda sess: courses.load(sess, cid), lambda sess: peer_observations.load(sess, cid),
+        lambda sess: satisfaction.load(sess, cid), lambda sess: curriculum.load(sess, cid),
+        lambda sess: advising.load(sess, cid), lambda sess: course_files.load(sess, cid),
+        lambda sess: innovation.load(sess, cid), lambda sess: supervision.load(sess, cid),
+        lambda sess: development.load(sess, cid), lambda sess: courses.registrar_report(sess, cid))
+    return Section6Context(case.id, case.status, *results)

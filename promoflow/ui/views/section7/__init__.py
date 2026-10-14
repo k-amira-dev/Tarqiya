@@ -4,7 +4,7 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier import section7 as s7
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 from promoflow.ui.views.section7 import (
     admin_positions_tab, committees_tab, community_tab, policy_tab, trainings_tab, workshops_tab,
 )
@@ -12,8 +12,7 @@ from promoflow.ui.views.section7 import (
 
 def render() -> None:
     user = st.session_state["current_user"]
-    with session_scope() as s:
-        ctx = s7.load(s, user.id)
+    ctx = cache.load_cached(f"pfc:s7:{user.id}", lambda s: s7.load(s, user.id))
 
     theme.html("""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 7 OF 11</div>

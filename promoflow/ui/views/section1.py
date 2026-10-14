@@ -6,7 +6,7 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier import section1 as s1
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 
 K = "s1_"  # widget-key prefix
 
@@ -33,8 +33,7 @@ def _file_size(n: int) -> str:
 def render() -> None:
     user = st.session_state["current_user"]
     today = date.today()
-    with session_scope() as s:
-        ctx = s1.load(s, user.id, today)
+    ctx = cache.load_cached(f"pfc:s1:{user.id}", lambda s: s1.load(s, user.id, today))
 
     theme.html(f"""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 1 OF 11</div>
@@ -54,11 +53,16 @@ def render() -> None:
     if not editable:
         st.info("This application has been submitted, so Section 1 is read-only.", icon=":material/lock:")
 
+    _form(ctx, user.id, today, editable)
+
+
+@st.fragment
+def _form(ctx: s1.Section1Context, user_id: int, today: date, editable: bool) -> None:
     _items_card(ctx)
     _declarations_card(editable)
     _form_card(ctx, editable)
     if editable:
-        _save_bar(user.id, today, ctx)
+        _save_bar(user_id, today, ctx)
 
 
 def _items_card(ctx: s1.Section1Context) -> None:

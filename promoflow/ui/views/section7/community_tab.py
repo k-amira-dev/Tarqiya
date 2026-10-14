@@ -6,7 +6,7 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier.section7 import community as s7b
 from promoflow.dossier.section7.common import funded_project_options
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 from promoflow.ui.views.section7.lookups import community_activity_type_options
 
 K = "s7b_"
@@ -49,6 +49,7 @@ def _summary(row: s7b.CommunityActivityRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, case_id: int, row: "s7b.CommunityActivityRow | None") -> None:
     a = row.activity if row else None
     prefix = f"s7b_f_{a.id if a else 'new'}_"
@@ -57,8 +58,7 @@ def _form(editable: bool, case_id: int, row: "s7b.CommunityActivityRow | None") 
     type_ids = [t.id for t in types]
     type_labels = {t.id: t.label for t in types}
     type_codes = {t.id: t.code for t in types}
-    with session_scope() as s:
-        project_options = funded_project_options(s, case_id)
+    project_options = cache.load_cached(f"pfc:fundedopts:{case_id}", lambda s: funded_project_options(s, case_id))
     with st.container(key=f"card_community_form_{a.id if a else 'new'}"):
         theme.card_header("+", "Edit community activity" if a else "Add a community service activity")
         activity_type_id = st.selectbox("Activity type", type_ids, format_func=type_labels.get,

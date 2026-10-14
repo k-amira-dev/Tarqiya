@@ -6,7 +6,7 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.dossier import section2 as s2
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 
 K = "s2_"
 
@@ -26,8 +26,7 @@ def _file_size(n: int) -> str:
 def render() -> None:
     user = st.session_state["current_user"]
     today = date.today()
-    with session_scope() as s:
-        ctx = s2.load(s, user.id, today)
+    ctx = cache.load_cached(f"pfc:s2:{user.id}", lambda s: s2.load(s, user.id, today))
 
     theme.html("""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 2 OF 11</div>
@@ -48,6 +47,11 @@ def render() -> None:
     if not editable:
         st.info("This application has been submitted, so Section 2 is read-only.", icon=":material/lock:")
 
+    _form(ctx, user.id, today, editable)
+
+
+@st.fragment
+def _form(ctx: s2.Section2Context, user_id: int, today: date, editable: bool) -> None:
     with st.container(key="card_cv"):
         theme.card_header("01", "Detailed CV", "PDF or Word, one file.")
         doc = ctx.cv_document
@@ -62,7 +66,7 @@ def render() -> None:
                       help="A warning is shown if this is more than 6 months before you submit.")
 
     if editable:
-        _save_bar(user.id, today, ctx)
+        _save_bar(user_id, today, ctx)
 
 
 def _save_bar(user_id: int, today: date, ctx: s2.Section2Context) -> None:

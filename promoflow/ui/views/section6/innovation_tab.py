@@ -47,6 +47,7 @@ def _summary(row: s6g.InnovationRow, course_options: dict[int, str], editable: b
                     st.rerun()
 
 
+@st.fragment
 def _form(editable: bool, course_options: dict[int, str], row: "s6g.InnovationRow | None") -> None:
     i = row.innovation if row else None
     prefix = f"s6g_f_{i.id if i else 'new'}_"

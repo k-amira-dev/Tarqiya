@@ -5,7 +5,7 @@ from promoflow.db.enums import RoleName
 from promoflow.ui import theme
 from promoflow.ui.auth import ROLE_LABELS, CurrentUser, logout
 from promoflow.ui.views import (
-    dashboard, section0, section1, section2, section3, section4, section5, section6, section7, section8,
+    dashboard, reviews, section0, section1, section2, section3, section4, section5, section6, section7, section8,
     section9, section10, section11,
 )
 
@@ -32,6 +32,8 @@ def pages_for(user: CurrentUser) -> dict[str, st.Page]:
     if user.has(RoleName.APPLICANT):
         for code, title, icon, url_path, render in SECTIONS:
             pages[f"section{code}"] = st.Page(render, title=title, icon=icon, url_path=url_path)
+    if user.has(RoleName.HOD, RoleName.DEAN):
+        pages["reviews"] = st.Page(reviews.render, title="Reviews", icon=":material/fact_check:", url_path="reviews")
     return pages
 
 
@@ -46,8 +48,11 @@ def sidebar(user: CurrentUser, pages: dict[str, st.Page]) -> None:
             for code, title, icon, _url_path, _render in SECTIONS:
                 st.page_link(pages[f"section{code}"], label=f"{code} · {title}", icon=icon)
         if user.has(RoleName.HOD, RoleName.DEAN, RoleName.CHANCELLOR):
-            theme.html('<div class="pf-navlabel">Reviews</div>'
-                       '<div class="pf-soon"><span>Cases awaiting my decision</span><em>soon</em></div>')
+            theme.html('<div class="pf-navlabel">Reviews</div>')
+            if "reviews" in pages:
+                st.page_link(pages["reviews"], label="Awaiting my decision", icon=":material/fact_check:")
+            else:   # the Chancellor's referee-selection page is still to come
+                theme.html('<div class="pf-soon"><span>Referee selection</span><em>soon</em></div>')
         if user.has(RoleName.ADMIN):
             theme.html('<div class="pf-navlabel">Admin</div>'
                        '<div class="pf-soon"><span>Criteria & journal rankings</span><em>soon</em></div>'

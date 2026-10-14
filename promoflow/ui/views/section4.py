@@ -8,7 +8,7 @@ from promoflow.db.enums import Rank
 from promoflow.db.session import session_scope
 from promoflow.dossier import section4 as s4
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.ui import theme
+from promoflow.ui import cache, theme
 
 K = "s4_"
 RANK_LABEL = {Rank.LECTURER: "Lecturer", Rank.ASSISTANT_PROFESSOR: "Assistant Professor",
@@ -18,8 +18,7 @@ RANK_LABEL = {Rank.LECTURER: "Lecturer", Rank.ASSISTANT_PROFESSOR: "Assistant Pr
 def render() -> None:
     user = st.session_state["current_user"]
     today = date.today()
-    with session_scope() as s:
-        ctx = s4.load(s, user.id, today)
+    ctx = cache.load_cached(f"pfc:s4:{user.id}", lambda s: s4.load(s, user.id, today))
 
     theme.html("""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 4 OF 11</div>
@@ -93,6 +92,7 @@ def _rank_summary(row: s4.RankRow, today: date, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _rank_form(today: date, editable: bool, row: "s4.RankRow | None") -> None:
     r = row.rank if row else None
     prefix = f"s4_rf_{r.id if r else 'new'}_"
@@ -175,6 +175,7 @@ def _position_summary(row: s4.PositionRow, editable: bool) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _position_form(editable: bool, row: "s4.PositionRow | None") -> None:
     p = row.position if row else None
     prefix = f"s4_pf_{p.id if p else 'new'}_"

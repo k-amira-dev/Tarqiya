@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from promoflow.db.enums import CaseStatus, PromotionTrack
+from promoflow.db.session import parallel
 from promoflow.db.models import (
     AuditLogEntry, CaseStatusHistory, College, Department, PolicyVersion, PromotionCase, PromotionCriteria, User,
 )
@@ -67,26 +68,34 @@ def active_case(s: Session, user_id: int) -> PromotionCase | None:
 
 
 def load(s: Session, user_id: int, today: date) -> Section0Context:
-    user = s.get(User, user_id)
-    college = s.get(College, user.college_id) if user.college_id else None
-    dept = s.get(Department, user.department_id) if user.department_id else None
-    identity = Identity(user.full_name or "", user.employee_id or "", user.email,
+    def identity(sess: Session) -> Identity:
+        user = sess.get(User, user_id)
+        college = sess.get(College, user.college_id) if user.college_id else None
+        dept = sess.get(Department, user.department_id) if user.department_id else None
+        return Identity(user.full_name or "", user.employee_id or "", user.email,
                         college.name_en if college else "Not set by Admin",
                         dept.name_en if dept else "Not set by Admin")
-    policy = current_policy(s, today)
-    criteria = {
-        c.track: Criteria(c.min_years_in_rank, c.min_years_at_institution, c.early_application_months,
-                          c.exceptional_min_years, c.reapply_min_years, c.reapply_new_publications,
-                          c.reapply_new_class_a, c.reapply_new_main_author)
-        for c in s.scalars(select(PromotionCriteria).where(PromotionCriteria.policy_version_id == policy.id))
-    }
-    case = active_case(s, user_id)
-    values = {}
-    if case is not None:
+
+    def policy_and_criteria(sess: Session):
+        policy = current_policy(sess, today)
+        criteria = {
+            c.track: Criteria(c.min_years_in_rank, c.min_years_at_institution, c.early_application_months,
+                              c.exceptional_min_years, c.reapply_min_years, c.reapply_new_publications,
+                              c.reapply_new_class_a, c.reapply_new_main_author)
+            for c in sess.scalars(select(PromotionCriteria).where(PromotionCriteria.policy_version_id == policy.id))
+        }
+        return policy.title, criteria
+
+    def case_snapshot(sess: Session):
+        case = active_case(sess, user_id)
+        if case is None:
+            return None, None, {}
         values = {f: getattr(case, f) for f in FIELDS}
         values["research_keywords"] = list(case.research_keywords or [])
-    return Section0Context(identity, case.id if case else None, case.status if case else None, values,
-                           policy.title, criteria)
+        return case.id, case.status, values
+
+    ident, (policy_title, criteria), (case_id, status, values) = parallel(identity, policy_and_criteria, case_snapshot)
+    return Section0Context(ident, case_id, status, values, policy_title, criteria)
 
 
 def save(s: Session, user_id: int, values: dict, today: date) -> int:

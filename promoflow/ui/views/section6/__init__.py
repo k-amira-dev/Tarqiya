@@ -1,11 +1,10 @@
 """Section 6 – Teaching & Academic Advising (spec chapter 10): one tab per Appendix E evidence sub-section."""
 import streamlit as st
 
-from promoflow.db.session import session_scope
 from promoflow.dossier import section6 as s6
 from promoflow.dossier.section0 import EDITABLE
-from promoflow.dossier.section6.common import course_options
-from promoflow.ui import theme
+from promoflow.dossier.section6.common import course_options_from
+from promoflow.ui import cache, theme
 from promoflow.ui.views.section6 import (
     advising_tab, course_files_tab, courses_tab, curriculum_tab, development_tab, innovation_tab,
     peer_observations_tab, satisfaction_tab, supervision_tab,
@@ -14,9 +13,8 @@ from promoflow.ui.views.section6 import (
 
 def render() -> None:
     user = st.session_state["current_user"]
-    with session_scope() as s:
-        ctx = s6.load(s, user.id)
-        courses_for_links = course_options(s, ctx.case_id) if ctx.case_id else {}
+    ctx = cache.load_cached(f"pfc:s6:{user.id}", lambda s: s6.load(s, user.id))
+    courses_for_links = course_options_from(ctx.courses)
 
     theme.html("""
     <div class="pf-hero"><div class="crumb">MY PROMOTION · SECTION 6 OF 11</div>

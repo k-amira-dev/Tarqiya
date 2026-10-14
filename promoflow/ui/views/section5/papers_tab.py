@@ -63,6 +63,7 @@ def _summary(row: s5p.PublicationRow, current_rank_date, editable: bool) -> None
                     st.rerun()
 
 
+@st.fragment
 def _form(current_rank_date, previously_rejected: bool, editable: bool, row: "s5p.PublicationRow | None") -> None:
     p = row.publication if row else None
     prefix = f"s5a_f_{p.id if p else 'new'}_"

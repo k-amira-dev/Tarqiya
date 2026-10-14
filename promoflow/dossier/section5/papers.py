@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from promoflow.db.enums import AuthorRole, DocumentKind, JournalClass, LookupSource, MainAuthorBasis, PublicationStatus
 from promoflow.db.models import CaseDocument, Journal, JournalRanking, Publication, PublicationAuthor, User
@@ -55,9 +55,7 @@ def _latest_ranking(s: Session, journal_id: int | None) -> JournalRanking | None
                     .order_by(JournalRanking.year.desc()))
 
 
-def classify(s: Session, p: Publication) -> Classification:
-    journal = _lookup_journal(s, p.issn)
-    ranking = _latest_ranking(s, journal.id if journal else None)
+def _classification(journal: Journal | None, ranking: JournalRanking | None, p: Publication) -> Classification:
     if ranking is None:
         return Classification(journal, None, JournalClass.NOT_COUNTED)
     cls = classify_journal(scopus_indexed=ranking.scopus_indexed, sjr_percentile=ranking.sjr_percentile,
@@ -65,9 +63,35 @@ def classify(s: Session, p: Publication) -> Classification:
     return Classification(journal, ranking, cls)
 
 
-def _row(s: Session, p: Publication) -> PublicationRow:
+def classify(s: Session, p: Publication) -> Classification:
+    journal = _lookup_journal(s, p.issn)
+    return _classification(journal, _latest_ranking(s, journal.id if journal else None), p)
+
+
+def classify_many(s: Session, pubs: list[Publication]) -> dict[int, Classification]:
+    """Same result as `classify` for each paper, but with two queries in total instead of two per paper."""
+    issns = {p.issn for p in pubs if p.issn}
+    journals = s.scalars(select(Journal).where(Journal.issn.in_(issns) | Journal.eissn.in_(issns))).all() if issns else []
+    by_issn = {}
+    for j in journals:
+        for key in (j.issn, j.eissn):
+            if key:
+                by_issn[key] = j
+    latest: dict[int, JournalRanking] = {}
+    if journals:
+        for r in s.scalars(select(JournalRanking).where(JournalRanking.journal_id.in_([j.id for j in journals]))
+                           .order_by(JournalRanking.year)):
+            latest[r.journal_id] = r  # ascending year, so the last one wins
+    out = {}
+    for p in pubs:
+        journal = by_issn.get(p.issn)
+        out[p.id] = _classification(journal, latest.get(journal.id) if journal else None, p)
+    return out
+
+
+def _row(s: Session, p: Publication, classification: Classification) -> PublicationRow:
     return PublicationRow(
-        p, list(p.authors), classify(s, p),
+        p, list(p.authors), classification,
         documents.current(s, p.case_id, "5A", DocumentKind.EVIDENCE, entity_table="publication", entity_id=p.id,
                           slot=PAPER_SLOT),
         documents.current(s, p.case_id, "5A", DocumentKind.EVIDENCE, entity_table="publication", entity_id=p.id,
@@ -76,9 +100,10 @@ def _row(s: Session, p: Publication) -> PublicationRow:
 
 
 def load(s: Session, case_id: int) -> list[PublicationRow]:
-    papers = s.scalars(select(Publication).where(Publication.case_id == case_id)
-                       .order_by(Publication.id)).all()
-    return [_row(s, p) for p in papers]
+    papers = s.scalars(select(Publication).options(selectinload(Publication.authors))
+                       .where(Publication.case_id == case_id).order_by(Publication.id)).all()
+    classes = classify_many(s, list(papers))
+    return [_row(s, p, classes[p.id]) for p in papers]
 
 
 def _is_empty(v) -> bool:
