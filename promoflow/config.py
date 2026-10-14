@@ -1,5 +1,5 @@
 """Settings, looked up in this order: environment variables (.env in development), then Streamlit Secrets
-(Streamlit Community Cloud), then the defaults below. See .env.example."""
+(Streamlit Community Cloud), then the defaults below. The settings are listed in the README."""
 import os
 
 from dotenv import load_dotenv

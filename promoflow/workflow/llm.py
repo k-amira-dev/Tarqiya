@@ -10,7 +10,7 @@ class LLMNotConfigured(RuntimeError):
 def get_llm(temperature: float = 0.0):
     """Chat model for the agents. Temperature 0 keeps runs as repeatable as possible."""
     if not GROQ_API_KEY:
-        raise LLMNotConfigured("GROQ_API_KEY is not set. Add it to .env (see .env.example).")
+        raise LLMNotConfigured("GROQ_API_KEY is not set. Add it to .env (see the README).")
     from langchain_groq import ChatGroq  # imported here so tests and rule-only code never need the key
 
     return ChatGroq(model=GROQ_MODEL, api_key=GROQ_API_KEY, temperature=temperature)

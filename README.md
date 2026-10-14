@@ -21,14 +21,22 @@ A human approves every step; the agents prepare and check the evidence.
 Prerequisite: Python 3.12+.
 
 ```bash
-git clone https://github.com/k-amira-dev/PromoFlow.git
-cd PromoFlow
+git clone https://github.com/seniorprojeco-ux/promoflow.git
+cd promoflow
 python -m venv .venv
 .venv\Scripts\python -m pip install -e .[dev]     # macOS/Linux: .venv/bin/python -m pip install -e .[dev]
-copy .env.example .env                           # macOS/Linux: cp .env.example .env
 ```
 
-Put the Supabase connection string in `.env` (ask the team lead privately), then run the app:
+Create a file named `.env` in the project folder (it is never committed). Only the first line is required; ask the
+team lead for the connection string privately, never share it on GitHub or in a chat group:
+
+```
+DATABASE_URL=postgresql+psycopg://...        # Supabase: Connect > Session pooler, with the password filled in
+GROQ_API_KEY=...                             # only needed to run the language-model agents
+DEV_PASSWORD=...                             # optional: password of the seeded test accounts (default promoflow-dev)
+```
+
+Then run the app:
 
 ```bash
 .venv\Scripts\python -m streamlit run app/Home.py
