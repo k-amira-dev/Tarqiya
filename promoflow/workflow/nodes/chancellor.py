@@ -79,9 +79,9 @@ class Ranked(BaseModel):
 
 class Ranking(BaseModel):
     items: list[Ranked] = Field(default_factory=list)
-
-
-# ---- phase 1: read ------------------------------------------------------------------------------------------------
+    
+"""Everything the agent needs as plain data: the case, track, topic words, paper
+titles, OpenAlex ID/ORCID, his side for the conflict checks (ApplicantSide ,Chapter 3), the referees used in the last 5 years, and how many reports the policy needs"""
 
 @dataclass
 class ShortlistContext:
