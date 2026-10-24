@@ -1,5 +1,4 @@
 """Reviewer Outreach: contacts the referees the Chancellor selected, tracks their answers and reads their reports.
-Owner: Khadidja.
 
 Two parts, because referee work takes months and a graph run cannot wait that long:
 
