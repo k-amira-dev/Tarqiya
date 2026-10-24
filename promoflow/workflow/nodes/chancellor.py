@@ -125,7 +125,7 @@ def build_context(s: Session, case_id: int, now: datetime) -> ShortlistContext:
         min_reports=crit.min_referee_reports if crit else 3)
 
 
-# ---- phase 2: search, rules, ranking --------------------------------------------------------------------------------
+# search, rules, ranking --------------------------------------------------------------------------------
 
 def _candidate(p: scholarly.AuthorProfile) -> rules.Candidate:
     return rules.Candidate(
@@ -257,8 +257,7 @@ def plan(ctx: ShortlistContext, found: list[scholarly.AuthorProfile], llm) -> Pl
     return out
 
 
-# ---- phase 3: save ------------------------------------------------------------------------------------------------
-
+#--save
 def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentOutput]:
     # A re-run replaces the previous suggestions, but never a candidate the Chancellor already selected.
     s.execute(delete(RefereeCandidate).where(RefereeCandidate.case_id == ctx.case_id,
@@ -298,8 +297,6 @@ def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentO
     save_output(s, ctx.case_id, out)
     return shortlist, out
 
-
-# ---- the graph calls this ------------------------------------------------------------------------------------------
 
 def run(state: CaseState) -> dict:
     if use_stubs(state):        # tests and demos of the graph's flow only
