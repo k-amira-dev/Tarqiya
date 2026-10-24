@@ -11,6 +11,28 @@ language model ids and facts only, never names. The output stays `{"shortlist": 
 Chancellor's page need no change."""
 from promoflow.workflow.schemas import CaseState
 
+import json
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from promoflow import config
+from promoflow.db import session as db_session
+from promoflow.db.enums import Component, Confidence, DecisionBasis, FlagSeverity, Verdict
+from promoflow.db.models import (
+    PromotionCase, PromotionCriteria, Publication, PublicationAuthor, Referee, RefereeCandidate,
+    ReviewerAssignment, ScopusEvidence,
+)
+from promoflow.rules import referees as rules
+from promoflow.workflow import llm as llm_module
+from promoflow.workflow import scholarly
+from promoflow.workflow.nodes import use_stubs
+from promoflow.workflow.persist import save_output
+from promoflow.workflow.schemas import AgentOutput, CaseState, FlagOut, ItemOut
 
 def run(state: CaseState) -> dict:
     # Placeholder candidates (ids only). Real version: OpenAlex/Scopus search + COI checks -> referee_candidate rows.
