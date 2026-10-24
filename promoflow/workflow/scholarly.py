@@ -84,8 +84,6 @@ def _openalex_url(path: str, params: dict | None = None) -> str:
     params = dict(params or {})
     if config.OPENALEX_API_KEY:
         params["api_key"] = config.OPENALEX_API_KEY
-    if config.OPENALEX_MAILTO:
-        params["mailto"] = config.OPENALEX_MAILTO
     query = urllib.parse.urlencode(params, safe=":|,")
     return f"{OPENALEX}{path}" + (f"?{query}" if query else "")
 
