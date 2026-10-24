@@ -246,8 +246,8 @@ def requirements(verdicts: list[PaperVerdict], facts: dict[int, PaperFacts], min
 
 
 # Self-reported vs verified metrics
-H_INDEX_TOLERANCE = 2          # points of h-index difference accepted before flagging (ASSUMPTION research-v1)
-CITATION_TOLERANCE = 0.15      # relative citation difference accepted before flagging (ASSUMPTION research-v1)
+H_INDEX_TOLERANCE = 1          # points of h-index difference accepted before flagging (ASSUMPTION research-v1)
+CITATION_TOLERANCE = 0.1      # relative citation difference accepted before flagging (ASSUMPTION research-v1)
 
 
 def metric_differences(reported_h: int | None, reported_citations: int | None,
