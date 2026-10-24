@@ -60,7 +60,7 @@ def _flag(s: Session, case_id: int, severity: FlagSeverity, code: str, message: 
     s.add(Flag(case_id=case_id, severity=severity, code=code, message=message, entity_table=table, entity_id=eid))
 
 
-# ---- email wording ------------------------------------------------------------------------------------------------
+# --email templates--
 
 class EmailDraft(BaseModel):
     subject: str
@@ -141,7 +141,7 @@ def queue_message(s: Session, a: ReviewerAssignment, kind: MessageKind, now: dat
     return msg
 
 
-# ---- 1. after the Chancellor's selection ----------------------------------------------------------------------------
+# --after the Chancellor's selection --
 
 def ready(referee: Referee) -> list[str]:
     """What is still missing before this referee may be contacted."""
@@ -224,7 +224,7 @@ def invite_pending(case_id: int, now: datetime | None = None) -> list[int]:
         return [a.id for a in (invite(s, c, now, llm) for c in cands) if a is not None]
 
 
-# ---- 2. the daily job ----------------------------------------------------------------------------------------------
+# --the daily job --
 
 @dataclass
 class TickSummary:
@@ -344,7 +344,7 @@ def _smtp_send(msg: OutreachMessage, to_address: str) -> None:
         smtp.send_message(email)
 
 
-# ---- 3. returned reports -------------------------------------------------------------------------------------------
+# -- returned reports --
 
 class PaperGrade(BaseModel):
     handle: str            # "pb-12"
@@ -432,7 +432,7 @@ def referee_status(case_id: int) -> rules.RefereeOutcome:
         return referee_status_session(s, case_id)
 
 
-#cli
+#--cli--
 def main() -> None:
     parser = argparse.ArgumentParser(description="Reviewer outreach jobs")
     sub = parser.add_subparsers(dest="cmd", required=True)
