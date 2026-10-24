@@ -52,8 +52,7 @@ SESSION_HOURS =int(_setting("SESSION_HOURS", "8"))
 MAX_FAILED_LOGINS = 5
 LOCKOUT_MINUTES = 15
 
-# ---- Research Agent and Reviewer Outreach (owner: Khadidja). Two separate agents; this file is shared. -------------
-# Scholarly data, used by both: OpenAlex only (free key: openalex.org/settings/api, $1 of free use per day).
+# Scholarly data, used by both: OpenAlex only
 OPENALEX_API_KEY = _setting("OPENALEX_API_KEY", "hRmkhWtEMwovce87MOlRhq")
 OPENALEX_MAILTO = _setting("OPENALEX_MAILTO", "")          # optional contact email OpenAlex asks for
 
