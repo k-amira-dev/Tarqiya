@@ -23,6 +23,7 @@ TABLE_BY_PREFIX = {
     "ti": "teaching_innovation", "sv": "supervision", "td": "teaching_development",
     "cm": "committee_membership", "ap": "administrative_position", "pc": "policy_contribution",
     "wk": "workshop_delivered", "tr": "training_delivered", "ca": "community_activity",
+    "pb": "publication", "bk": "book", "pt": "patent", "cw": "creative_work", "rc": "referee_candidate",
 }
 PREFIX_BY_TABLE = {table: prefix for prefix, table in TABLE_BY_PREFIX.items()}   # the same mapping, reversed
 # A valid handle is exactly: two lowercase letters, a dash, then digits (e.g. "ss-12").
