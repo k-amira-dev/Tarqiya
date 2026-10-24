@@ -54,7 +54,6 @@ LOCKOUT_MINUTES = 15
 
 # Scholarly data, used by both: OpenAlex only
 OPENALEX_API_KEY = _setting("OPENALEX_API_KEY", "hRmkhWtEMwovce87MOlRhq")
-OPENALEX_MAILTO = _setting("OPENALEX_MAILTO", "")          # optional contact email OpenAlex asks for
 
 # Reviewer Outreach only. Our own institution, for the referee "same institution" conflict check.
 INSTITUTION_NAME = _setting("INSTITUTION_NAME", "University of Sharjah")
