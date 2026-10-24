@@ -34,6 +34,36 @@ from promoflow.workflow.nodes import use_stubs
 from promoflow.workflow.persist import save_output
 from promoflow.workflow.schemas import AgentOutput, CaseState, FlagOut, ItemOut
 
+SYSTEM = """You are the Chancellor's Office Agent of PromoFlow (faculty promotion, University of Sharjah). You rank
+candidate external referees for a promotion case by how well their research matches the applicant's field. All
+candidates have already passed the conflict-of-interest and eligibility rules.
+### SCORING RUBRIC (0.0 to 1.0)
+- 1.0: Exact narrow specialization match (identical domain, methods, or core research topics).
+- 0.7: High overlap (same subfield or closely related methodology).
+- 0.5: Broad field match (same general discipline/department, but different subfield).
+- 0.2: Marginal relevance (tangential connection or minor overlap).
+- 0.0: Unrelated field.
+
+### CRITICAL CONSTRAINTS
+1. Base scores strictly on topic alignment with applicant specialization and paper titles. not institutional prestige, geographic location, or candidate fame.
+2. Rely strictly on the provided context. Do NOT use outside knowledge or hallucinate publication history.
+3. Keep each rationale concise (maximum 30 words).
+4. Do NOT omit any candidate referee provided in the input
+
+### OUTPUT FORMAT
+Return a rationale of at most 30 words valid JSON only with no markdown formatting or commentary outside the JSON array:
+[
+  {
+    "handle": "c-3",
+    "score": 0.85,
+    "rationale": "Direct overlap in deep learning for medical imaging, matching three of the applicant's primary journal publications."
+  }
+]
+"""
+
+
 def run(state: CaseState) -> dict:
     # Placeholder candidates (ids only). Real version: OpenAlex/Scopus search + COI checks -> referee_candidate rows.
     return {"shortlist": [{"candidate_id": i, "coi_clear": True} for i in range(1, 4)]}
+
+
