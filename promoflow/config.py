@@ -51,3 +51,18 @@ DEV_IGNORE_SUBMISSION_WINDOW = _setting("DEV_IGNORE_SUBMISSION_WINDOW", "").stri
 SESSION_HOURS =int(_setting("SESSION_HOURS", "8"))
 MAX_FAILED_LOGINS = 5
 LOCKOUT_MINUTES = 15
+
+# ---- Research Agent and Reviewer Outreach (owner: Khadidja). Two separate agents; this file is shared. -------------
+# Scholarly data, used by both: OpenAlex only (free key: openalex.org/settings/api, $1 of free use per day).
+OPENALEX_API_KEY = _setting("OPENALEX_API_KEY", "hRmkhWtEMwovce87MOlRhq")
+OPENALEX_MAILTO = _setting("OPENALEX_MAILTO", "")          # optional contact email OpenAlex asks for
+
+# Reviewer Outreach only. Our own institution, for the referee "same institution" conflict check.
+INSTITUTION_NAME = _setting("INSTITUTION_NAME", "University of Sharjah")
+INSTITUTION_OPENALEX_ID = _setting("INSTITUTION_OPENALEX_ID", "")   # e.g. I123456789 (look it up on openalex.org)
+# Reviewer Outreach only. Outgoing referee emails; with no SMTP_HOST, messages stay queued and nothing is sent.
+SMTP_HOST = _setting("SMTP_HOST", "")
+SMTP_PORT = int(_setting("SMTP_PORT", "587"))
+SMTP_USER = _setting("SMTP_USER", "")
+SMTP_PASSWORD = _setting("SMTP_PASSWORD", "")
+OUTREACH_FROM = _setting("OUTREACH_FROM", "")              # the sender address the referees see
