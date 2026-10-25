@@ -158,7 +158,7 @@ def next_action(waiting: bool, invited_at: datetime, last_reminder_at: datetime 
     if not waiting:
         return None
     if now - invited_at >= NO_RESPONSE_LIMIT:
-        return REPLACE
+        return REPLACE #with another candidate
     if now - (last_reminder_at or invited_at) >= REMINDER_EVERY:
         return REMIND
     return None
