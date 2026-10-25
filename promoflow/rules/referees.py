@@ -8,6 +8,9 @@
 
 Plain functions: same inputs, same answer, no database, no network.
 """
+"""
+FUTURE ADDITION: ORCHID FOR SAMESCHOOL COMPARE
+"""
 import re
 import unicodedata
 from dataclasses import dataclass, field
