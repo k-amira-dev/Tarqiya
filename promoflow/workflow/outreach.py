@@ -1,3 +1,24 @@
+"""Reviewer Outreach: contacts the referees the Chancellor selected, tracks their answers and reads their reports.
+Owner: Khadidja.
+
+Two parts, because referee work takes months and a graph run cannot wait that long:
+
+1. `run(state)` - a graph node right after the Chancellor's selection. It marks the chosen candidates, opens a
+   reviewer_assignment for every referee whose rank and email are confirmed, and queues the invitation email.
+   Referees still missing an email or rank get a needs_human flag; once the office fills them in
+   (`confirm_referee`), `invite_pending(case_id)` invites them.
+2. A daily job (`tick`), run outside the website, for example by a scheduled task:
+       python -m promoflow.workflow.outreach tick     reminders every 2 weeks; replacement after 3 months
+       python -m promoflow.workflow.outreach send     send queued emails (needs SMTP_* settings)
+
+Returned reports: `parse_report_text()` lets the language model read a report into grades + a summary FOR A PERSON
+TO CONFIRM; `record_report()` saves the confirmed grades; `referee_status()` applies the rules (minimum number of
+reports, average >= 75% Associate / 80% Full) and raises a flag once the minimum is met.
+
+Deterministic: every date rule, the replacement, the averages and the pass mark (promoflow/rules/referees.py).
+LLM: only the wording of emails (it never sees names; placeholders are filled in afterwards) and the first reading
+of a report text.
+"""
 import argparse
 import smtplib
 from dataclasses import dataclass, field
