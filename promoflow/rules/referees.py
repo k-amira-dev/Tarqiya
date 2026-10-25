@@ -90,7 +90,7 @@ def conflicts(c: Candidate, a: ApplicantSide, recently_used: set[str]) -> Confli
 def eligibility(c: Candidate, a: ApplicantSide, conflict: Conflict) -> tuple[bool, list[str]]:
     """(eligible, reasons it is not). Rank (Full Professor) cannot be checked from OpenAlex: a person confirms it."""
     reasons = []
-    if not conflict.clear:
+     if not conflict.clear:
         if conflict.coauthor:
             reasons.append("co-authored with the applicant")
         if conflict.same_institution:
@@ -106,8 +106,17 @@ def eligibility(c: Candidate, a: ApplicantSide, conflict: Conflict) -> tuple[boo
     if a.citations is not None and (c.citations is None or c.citations < METRIC_RATIO * a.citations):
         reasons.append(f"{c.citations} citations is below the applicant's {a.citations}")
     return not reasons, reasons
+    #if conflict.same_school:
+            #reasons.append("studied or worked at a university where the applicant studied")#
 
-
+def reachable(email: str | None) -> bool:
+    """Can this referee be contacted? Yes if there is an email address, no if there is not. OpenAlex never gives
+    emails, so a new candidate is unreachable until the Chancellor's office enters one."""
+    text = (email or "").strip()
+    return "@" in text and not text.startswith("@") and not text.endswith("@")
+ 
+#HIGHLY UNLIKELY TO BE APPLIED DUE TO THE NATURE OF THE PROJECT WHICH IS AGENTIC: 
+#iff llm is not reachable then we use hardcoded rules
 def topic_overlap(candidate_topics: tuple[str, ...] | list[str], applicant_terms: list[str]) -> float:
     """Fallback match score (0-1) when no language model is available: the share of the applicant's words found in
     the candidate's topics."""
@@ -116,11 +125,32 @@ def topic_overlap(candidate_topics: tuple[str, ...] | list[str], applicant_terms
         return 0.0
     theirs = {w for t in candidate_topics for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
     return round(len(words & theirs) / len(words), 3)
-
-
+  
+#reachability
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.IGNORECASE)
+ 
+ 
+def reachable(email: str | None) -> bool:
+    """Yes only if we hold a well-formed email address for the referee. Without one nobody can be invited, so the
+    outreach worker blocks the invitation and asks a person to find the address."""
+    return bool(email and _EMAIL.match(email.strip()))
+ 
+ 
+def contact_search_links(name: str | None, institution: str | None) -> dict[str, str]:
+    """Ready-made search links for the person who looks up a referee's email by hand. Google Scholar and LinkedIn
+    cannot be searched automatically (no public API; scraping breaks their terms), so these are for a human."""
+    if not name:
+        return {}
+    q = quote_plus(" ".join(x for x in (name, institution) if x))
+    return {"google_scholar": f"https://scholar.google.com/scholar?q={q}",
+            "linkedin": f"https://www.linkedin.com/search/results/people/?keywords={q}",
+            "web": f"https://www.google.com/search?q={q}+email"}
+ 
+ 
 # ---- outreach timing -----------------------------------------------------------------------------------------------
 
-REMIND, REPLACE = "remind", "replace"
+REMIND = "remind"
+REPLACE = "replace
 
 
 def next_action(waiting: bool, invited_at: datetime, last_reminder_at: datetime | None, now: datetime) -> str | None:
