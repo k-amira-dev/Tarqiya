@@ -1,4 +1,4 @@
-"""Small client for OpenAlex, the free scholarly database (free key: openalex.org/settings/api). No Scopus.
+"""
 
 Used by the Research Agent (verified h-index / citations) and, separately, by the Reviewer Outreach agent (referee
 search, author profiles, co-author lists). Each agent calls it on its own. Plain `urllib`, so no new library is
