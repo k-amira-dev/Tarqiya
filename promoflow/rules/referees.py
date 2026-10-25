@@ -39,5 +39,116 @@ def name_key(name: str | None) -> str | None:
 def _norm_inst(name: str | None) -> str:
     return re.sub(r"[^a-z]+", " ", (name or "").lower()).strip()
 
+@dataclass(frozen=True)
+class Candidate:
+    key: str                                   # OpenAlex author id, e.g. "A5023888391"
+    name: str | None
+    country: str | None
+    institution_ids: frozenset[str] = frozenset()
+    institution_names: frozenset[str] = frozenset()
+    h_index: int | None = None
+    citations: int | None = None
+    works: int | None = None
+    topics: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True)
+class ApplicantSide:
+    coauthor_ids: frozenset[str] = frozenset()        # OpenAlex ids of recent co-authors
+    coauthor_name_keys: frozenset[str] = frozenset()  # from the dossier's author lists
+    institution_ids: frozenset[str] = frozenset()
+    institution_names: frozenset[str] = frozenset()
+    h_index: int | None = None
+    citations: int | None = None
+
+
+@dataclass(frozen=True)
+class Conflict:
+    coauthor: bool
+    same_institution: bool
+    used_within_5_years: bool
+
+    @property
+    def clear(self) -> bool:
+        return not (self.coauthor or self.same_institution or self.used_within_5_years)
+
+
+def conflicts(c: Candidate, a: ApplicantSide, recently_used: set[str]) -> Conflict:
+    """`recently_used` = OpenAlex ids of referees invited on ANY case in the last 5 years."""
+    coauthor = c.key in a.coauthor_ids or (name_key(c.name) in a.coauthor_name_keys if c.name else False)
+    same_inst = bool(c.institution_ids & a.institution_ids) or bool(
+        {_norm_inst(n) for n in c.institution_names} & {_norm_inst(n) for n in a.institution_names} - {""})
+    return Conflict(coauthor, same_inst, c.key in recently_used)
+
+
+def eligibility(c: Candidate, a: ApplicantSide, conflict: Conflict) -> tuple[bool, list[str]]:
+    """(eligible, reasons it is not). Rank (Full Professor) cannot be checked from OpenAlex: a person confirms it."""
+    reasons = []
+    if not conflict.clear:
+        if conflict.coauthor:
+            reasons.append("co-authored with the applicant")
+        if conflict.same_institution:
+            reasons.append("shares an institution with the applicant")
+        if conflict.used_within_5_years:
+            reasons.append("was a referee in the last 5 years")
+    if not c.country:
+        reasons.append("country unknown (must be outside the UAE)")
+    elif c.country.upper() == UAE:
+        reasons.append("based in the UAE")
+    if a.h_index is not None and (c.h_index is None or c.h_index < METRIC_RATIO * a.h_index):
+        reasons.append(f"h-index {c.h_index} is below the applicant's {a.h_index}")
+    if a.citations is not None and (c.citations is None or c.citations < METRIC_RATIO * a.citations):
+        reasons.append(f"{c.citations} citations is below the applicant's {a.citations}")
+    return not reasons, reasons
+
+
+def topic_overlap(candidate_topics: tuple[str, ...] | list[str], applicant_terms: list[str]) -> float:
+    """Fallback match score (0-1) when no language model is available: the share of the applicant's words found in
+    the candidate's topics."""
+    words = {w for t in applicant_terms for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
+    if not words:
+        return 0.0
+    theirs = {w for t in candidate_topics for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
+    return round(len(words & theirs) / len(words), 3)
+
+
+# ---- outreach timing -----------------------------------------------------------------------------------------------
+
+REMIND, REPLACE = "remind", "replace"
+
+
+def next_action(waiting: bool, invited_at: datetime, last_reminder_at: datetime | None, now: datetime) -> str | None:
+    """What to do today for one contacted referee. `waiting` = invited/reminded/accepted with no report yet."""
+    if not waiting:
+        return None
+    if now - invited_at >= NO_RESPONSE_LIMIT:
+        return REPLACE
+    if now - (last_reminder_at or invited_at) >= REMINDER_EVERY:
+        return REMIND
+    return None
+
+
+# ---- returned reports ----------------------------------------------------------------------------------------------
+
+@dataclass
+class RefereeOutcome:
+    report_averages: dict[int, float] = field(default_factory=dict)   # report id -> mean of its paper grades
+    overall_average: float | None = None
+    reports: int = 0
+    enough_reports: bool = False
+    passed: bool | None = None            # None until the minimum number of reports is in
+
+
+def referee_outcome(grades_by_report: dict[int, list[float]], min_reports: int, min_average_pct: float
+                    ) -> RefereeOutcome:
+    out = RefereeOutcome()
+    exact = {rid: sum(g) / len(g) for rid, g in grades_by_report.items() if g}
+    out.report_averages = {rid: round(v, 2) for rid, v in exact.items()}   # rounded for display only
+    out.reports = len(exact)
+    out.enough_reports = out.reports >= min_reports
+    exact_overall = sum(exact.values()) / out.reports if exact else None
+    if exact_overall is not None:
+        out.overall_average = round(exact_overall, 2)                      # rounded for display only
+    if out.enough_reports:
+        out.passed = exact_overall >= min_average_pct                      # the decision uses the exact value
+    return out
