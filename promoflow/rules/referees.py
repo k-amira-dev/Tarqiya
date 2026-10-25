@@ -9,7 +9,7 @@
 Plain functions: same inputs, same answer, no database, no network.
 """
 """
-FUTURE ADDITION: ORCHID FOR SAMESCHOOL COMPARE
+FUTURE ADDITION: ORCID FOR SAMESCHOOL COMPARE
 """
 import re
 import unicodedata
@@ -26,7 +26,7 @@ UAE = "AE"
 
 
 def name_key(name: str | None) -> str | None:
-    """A rough key for matching author names written differently: "Saleh, Jamal A." / "J. A. Saleh" -> "smith j".
+    """A rough key for matching author names written differently: "Saleh, Jamal A." / "J. A. Saleh" -> "Saleh j".
     Used only to spot possible co-authors; a match is a conflict to be checked"""
     if not name:
         return None
