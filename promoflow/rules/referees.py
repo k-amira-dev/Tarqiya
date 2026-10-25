@@ -8,9 +8,8 @@
 
 Plain functions: same inputs, same answer, no database, no network.
 """
-"""
-FUTURE ADDITION: ORCID FOR SAMESCHOOL COMPARE
-"""
+   # FUTURE: same-school rule (the referee must not share a university of study with the applicant),
+   # using Section 3 degrees + ORCID education + manual confirmation.
 import re
 import unicodedata
 from dataclasses import dataclass, field
