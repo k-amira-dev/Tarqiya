@@ -9,7 +9,6 @@ TO DO (real version): search for candidates (OpenAlex / Scopus), remove conflict
 institution, a referee used in the last 5 years), keep at most 10, and save them as `referee_candidate` rows. Send the
 language model ids and facts only, never names. The output stays `{"shortlist": [...]}` so the graph and the
 Chancellor's page need no change."""
-from promoflow.workflow.schemas import CaseState
 
 import json
 from dataclasses import dataclass, field
@@ -56,20 +55,10 @@ candidates have already passed the conflict-of-interest and eligibility rules.
 4. Do NOT omit any candidate referee provided in the input
 
 ### OUTPUT FORMAT
-Return a rationale of at most 30 words valid JSON only with no markdown formatting or commentary outside the JSON array:
-[
-  {
-    "handle": "c-3",
-    "score": 0.85,
-    "rationale": "Direct overlap in deep learning for medical imaging, matching three of the applicant's primary journal publications."
-  }
-]
+  ### OUTPUT
+  For EVERY candidate return its handle exactly as given (e.g. "c-3"), a score from 0.0 to 1.0, and a rationale of at
+  most 30 words, in the "items" list.
 """
-
-
-def run(state: CaseState) -> dict:
-    # Placeholder candidates (ids only). Real version: OpenAlex/Scopus search + COI checks -> referee_candidate rows.
-    return {"shortlist": [{"candidate_id": i, "coi_clear": True} for i in range(1, 4)]}
 
 class Ranked(BaseModel):
     handle: str
@@ -218,9 +207,9 @@ def plan(ctx: ShortlistContext, found: list[scholarly.AuthorProfile], llm) -> Pl
             try:
                 result = llm.with_structured_output(Ranking).invoke(messages)
             except Exception as e:
-                out.flags.append(FlagOut(severity=FlagSeverity.INFO, code="llm_unavailable",
-                                         message=f"The language model failed ({type(e).__name__}); candidates were "
-                                                 "ranked by topic-word overlap instead."))
+                     out.flags.append(FlagOut(severity=FlagSeverity.INFO, code="llm_unavailable",
+                             message=f"The language model failed ({type(e).__name__}); the candidates "
+                                        "were not ranked by field alignment."))
                 break
             for r in result.items:
                 h = r.handle.strip().lower()
