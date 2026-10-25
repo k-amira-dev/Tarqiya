@@ -210,7 +210,7 @@ def plan(ctx: ShortlistContext, found: list[scholarly.AuthorProfile], llm) -> Pl
                      out.flags.append(FlagOut(severity=FlagSeverity.INFO, code="llm_unavailable",
                              message=f"The language model failed ({type(e).__name__}); the candidates "
                                         "were not ranked by field alignment."))
-                break
+            break
             for r in result.items:
                 h = r.handle.strip().lower()
                 if h in handles:
@@ -315,4 +315,3 @@ def run(state: CaseState) -> dict:
     with db_session.session_scope() as s:
         shortlist, _ = save(s, ctx, p)
     return {"shortlist": shortlist}
-
