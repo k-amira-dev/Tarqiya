@@ -15,6 +15,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from urllib.parse import quote_plus
 
 MAX_SHORTLIST = 10                          #max candidates in the shortlist
 REUSE_YEARS = 5
@@ -90,7 +91,7 @@ def conflicts(c: Candidate, a: ApplicantSide, recently_used: set[str]) -> Confli
 def eligibility(c: Candidate, a: ApplicantSide, conflict: Conflict) -> tuple[bool, list[str]]:
     """(eligible, reasons it is not). Rank (Full Professor) cannot be checked from OpenAlex: a person confirms it."""
     reasons = []
-     if not conflict.clear:
+    if not conflict.clear:
         if conflict.coauthor:
             reasons.append("co-authored with the applicant")
         if conflict.same_institution:
@@ -117,17 +118,17 @@ def reachable(email: str | None) -> bool:
  
 #HIGHLY UNLIKELY TO BE APPLIED DUE TO THE NATURE OF THE PROJECT WHICH IS AGENTIC: 
 #iff llm is not reachable then we use hardcoded rules
-#def topic_overlap(candidate_topics: tuple[str, ...] | list[str], applicant_terms: list[str]) -> float:
- #   """Fallback match score (0-1) when no language model is available: the share of the applicant's words found in
-  #  the candidate's topics."""
-   # words = {w for t in applicant_terms for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
-    #if not words:
-     #   return 0.0
-    #theirs = {w for t in candidate_topics for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
-    #return round(len(words & theirs) / len(words), 3)
+def topic_overlap(candidate_topics: tuple[str, ...] | list[str], applicant_terms: list[str]) -> float:
+    """Fallback match score (0-1) when no language model is available: the share of the applicant's words found in
+    the candidate's topics."""
+    words = {w for t in applicant_terms for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
+    if not words:
+        return 0.0
+    theirs = {w for t in candidate_topics for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
+    return round(len(words & theirs) / len(words), 3)
   
 #reachability
-_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.IGNORECASE)#
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.IGNORECASE)
  
  
 def reachable(email: str | None) -> bool:
@@ -150,7 +151,7 @@ def contact_search_links(name: str | None, institution: str | None) -> dict[str,
 # ---- outreach timing -----------------------------------------------------------------------------------------------
 
 REMIND = "remind"
-REPLACE = "replace
+REPLACE = "replace"
 
 
 def next_action(waiting: bool, invited_at: datetime, last_reminder_at: datetime | None, now: datetime) -> str | None:
@@ -174,13 +175,13 @@ class RefereeOutcome:
     enough_reports: bool = False
     passed: bool | None = None            # None until the minimum number of reports is in
 
-
+#Assuming the reviewer will provide their review %
 def referee_outcome(grades_by_report: dict[int, list[float]], min_reports: int, min_average_pct: float
                     ) -> RefereeOutcome:
     out = RefereeOutcome()
-    exact = {rid: sum(g) / len(g) for rid, g in grades_by_report.items() if g}
+    exact = {rid: sum(g) / len(g) for rid, g in grades_by_report.items() if g} #avg of each report per applicant percentage of reviews/num of reviews, empty reports ignored
     out.report_averages = {rid: round(v, 2) for rid, v in exact.items()}   # rounded for display only
-    out.reports = len(exact)
+    out.reports = len(exact) #ensure we got 3 legit reports minimum
     out.enough_reports = out.reports >= min_reports
     exact_overall = sum(exact.values()) / out.reports if exact else None
     if exact_overall is not None:
