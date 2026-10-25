@@ -1,23 +1,3 @@
-"""Reviewer Outreach: contacts the referees the Chancellor selected, tracks their answers and reads their reports.
-
-Two parts, because referee work takes months and a graph run cannot wait that long:
-
-1. `run(state)` - a graph node right after the Chancellor's selection. It marks the chosen candidates, opens a
-   reviewer_assignment for every referee whose rank and email are confirmed, and queues the invitation email.
-   Referees still missing an email or rank get a needs_human flag; once the office fills them in
-   (`confirm_referee`), `invite_pending(case_id)` invites them.
-2. A daily job (`tick`), run outside the website, for example by a scheduled task:
-       python -m promoflow.workflow.outreach tick     reminders every 2 weeks; replacement after 3 months
-       python -m promoflow.workflow.outreach send     send queued emails (needs SMTP_* settings)
-
-Returned reports: `parse_report_text()` lets the language model read a report into grades + a summary FOR A PERSON
-TO CONFIRM; `record_report()` saves the confirmed grades; `referee_status()` applies the rules (minimum number of
-reports, average >= 75% Associate / 80% Full) and raises a flag once the minimum is met.
-
-Deterministic: every date rule, the replacement, the averages and the pass mark (promoflow/rules/referees.py).
-LLM: only the wording of emails (it never sees names; placeholders are filled in afterwards) and the first reading
-of a report text.
-"""
 import argparse
 import smtplib
 from dataclasses import dataclass, field
@@ -60,7 +40,7 @@ def _flag(s: Session, case_id: int, severity: FlagSeverity, code: str, message: 
     s.add(Flag(case_id=case_id, severity=severity, code=code, message=message, entity_table=table, entity_id=eid))
 
 
-# --email templates--
+# ---- email wording ------------------------------------------------------------------------------------------------
 
 class EmailDraft(BaseModel):
     subject: str
@@ -141,7 +121,7 @@ def queue_message(s: Session, a: ReviewerAssignment, kind: MessageKind, now: dat
     return msg
 
 
-# --after the Chancellor's selection --
+# ---- 1. after the Chancellor's selection ----------------------------------------------------------------------------
 
 def ready(referee: Referee) -> list[str]:
     """What is still missing before this referee may be contacted."""
@@ -224,7 +204,7 @@ def invite_pending(case_id: int, now: datetime | None = None) -> list[int]:
         return [a.id for a in (invite(s, c, now, llm) for c in cands) if a is not None]
 
 
-# --the daily job --
+# ---- 2. the daily job ----------------------------------------------------------------------------------------------
 
 @dataclass
 class TickSummary:
@@ -234,15 +214,18 @@ class TickSummary:
 
 
 def _replacement(s: Session, case_id: int) -> RefereeCandidate | None:
-    """The best remaining shortlisted candidate: eligible, not chosen yet, never contacted for this case."""
+    """The best remaining shortlisted candidate: eligible, not chosen yet, never contacted for this case.
+    A candidate who can be contacted right now (email and rank confirmed) is preferred."""
     contacted = set(s.scalars(select(ReviewerAssignment.referee_id).where(ReviewerAssignment.case_id == case_id)))
-    for cand in s.scalars(select(RefereeCandidate).where(RefereeCandidate.case_id == case_id,
-                                                         RefereeCandidate.eligible.is_(True),
-                                                         RefereeCandidate.selected_by_chancellor.is_(False))
-                          .order_by(RefereeCandidate.match_score.desc(), RefereeCandidate.id)):
-        if cand.referee_id not in contacted:
-            return cand
-    return None
+    cands = list(s.scalars(select(RefereeCandidate).where(
+        RefereeCandidate.case_id == case_id, RefereeCandidate.eligible.is_(True),
+        RefereeCandidate.selected_by_chancellor.is_(False))
+        .order_by(RefereeCandidate.match_score.desc(), RefereeCandidate.id)))
+    cands = [c for c in cands if c.referee_id not in contacted]
+    for c in cands:
+        if not ready(s.get(Referee, c.referee_id)):    # nothing missing: can be contacted now
+            return c
+    return cands[0] if cands else None                 # none ready: best match, and invite() will flag it
 
 
 def tick_session(s: Session, now: datetime, llm=None) -> TickSummary:
@@ -276,11 +259,16 @@ def tick_session(s: Session, now: datetime, llm=None) -> TickSummary:
             new = invite(s, cand, now, llm)
             if new is not None:
                 a.replaced_by_id = new.id
-            _flag(s, a.case_id, FlagSeverity.WARNING, "referee_replaced",
-                  f"Referee assignment #{a.id} had no report after 3 months; candidate #{cand.id} was invited "
-                  "automatically in its place.", "reviewer_assignment", a.id)
-            out.replaced.append(a.id)
-    s.flush()
+                _flag(s, a.case_id, FlagSeverity.WARNING, "referee_replaced",
+                    f"Assignment #{a.id} had no report after 3 months; candidate #{cand.id} was invited in its place.",
+                    "reviewer_assignment", a.id)
+                out.replaced.append(a.id)
+            else:
+                _flag(s, a.case_id, FlagSeverity.NEEDS_HUMAN, "replacement_not_contactable",
+                    f"Assignment #{a.id} had no report after 3 months. Candidate #{cand.id} is the next choice but is "
+                    "missing an email or confirmed rank. Confirm them, then run invite-pending.",
+                    "reviewer_assignment", a.id)
+                out.no_replacement.append(a.id)
     return out
 
 
@@ -344,7 +332,7 @@ def _smtp_send(msg: OutreachMessage, to_address: str) -> None:
         smtp.send_message(email)
 
 
-# -- returned reports --
+# ---- 3. returned reports -------------------------------------------------------------------------------------------
 
 class PaperGrade(BaseModel):
     handle: str            # "pb-12"
@@ -432,7 +420,8 @@ def referee_status(case_id: int) -> rules.RefereeOutcome:
         return referee_status_session(s, case_id)
 
 
-#--cli--
+# ---- command line -------------------------------------------------------------------------------------------------
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Reviewer outreach jobs")
     sub = parser.add_subparsers(dest="cmd", required=True)
