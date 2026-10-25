@@ -111,8 +111,8 @@ def eligibility(c: Candidate, a: ApplicantSide, conflict: Conflict) -> tuple[boo
             #reasons.append("studied or worked at a university where the applicant studied")#
 """#prevoius reachability check we implemented it again in orchid
 def reachable(email: str | None) -> bool:
-    """Can this referee be contacted? Yes if there is an email address, no if there is not. OpenAlex never gives
-    emails, so a new candidate is unreachable until the Chancellor's office enters one."""
+    #Can this referee be contacted? Yes if there is an email address, no if there is not. OpenAlex never gives
+    #emails, so a new candidate is unreachable until the Chancellor's office enters one.
     text = (email or "").strip()
     return "@" in text and not text.startswith("@") and not text.endswith("@")
  """
