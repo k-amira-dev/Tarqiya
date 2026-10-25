@@ -117,17 +117,17 @@ def reachable(email: str | None) -> bool:
  
 #HIGHLY UNLIKELY TO BE APPLIED DUE TO THE NATURE OF THE PROJECT WHICH IS AGENTIC: 
 #iff llm is not reachable then we use hardcoded rules
-def topic_overlap(candidate_topics: tuple[str, ...] | list[str], applicant_terms: list[str]) -> float:
-    """Fallback match score (0-1) when no language model is available: the share of the applicant's words found in
-    the candidate's topics."""
-    words = {w for t in applicant_terms for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
-    if not words:
-        return 0.0
-    theirs = {w for t in candidate_topics for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
-    return round(len(words & theirs) / len(words), 3)
+#def topic_overlap(candidate_topics: tuple[str, ...] | list[str], applicant_terms: list[str]) -> float:
+ #   """Fallback match score (0-1) when no language model is available: the share of the applicant's words found in
+  #  the candidate's topics."""
+   # words = {w for t in applicant_terms for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
+    #if not words:
+     #   return 0.0
+    #theirs = {w for t in candidate_topics for w in re.findall(r"[a-z]{4,}", (t or "").lower())}
+    #return round(len(words & theirs) / len(words), 3)
   
 #reachability
-_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.IGNORECASE)
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[a-z]{2,}$", re.IGNORECASE)#
  
  
 def reachable(email: str | None) -> bool:
