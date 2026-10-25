@@ -1,3 +1,4 @@
+
 import json
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -410,17 +411,21 @@ def assess(ctx: ResearchContext, metrics: VerifiedMetrics, llm) -> AgentOutput:
                                      "narrative is the rule summary only."))
     elif ctx.records:
         judgment, error, feedback = None, None, None
-        for _attempt in (1, 2):                                        # one retry, then keep only what verifies
-            try:
-                judgment = llm.with_structured_output(ResearchJudgment).invoke(
-                    _messages(ctx, reqs, metrics, feedback))
-            except Exception as e:                                     # network, rate limit, bad output
-                error = f"{type(e).__name__}: {e}"
-                judgment = None
-                break
-            feedback = _problems(judgment, ctx)
-            if not feedback:
-                break
+    for _attempt in (1, 2):                                         # retry logic
+                try:
+                    judgment = llm.with_structured_output(ResearchJudgment).invoke(
+                        _messages(ctx, reqs, metrics, feedback))
+                    error = None                                           # delete any error in the second try
+                except Exception as e:                                     # network, rate limit, bad output
+                    error = f"{type(e).__name__}: {e}"
+                    judgment = None
+                    if _attempt == 2:                                       # wait for trail two to finish
+                        break
+                    continue                                              
+                
+                feedback = _problems(judgment, ctx)
+                if not feedback:
+                    break                                                 
         if judgment is None:
             flags.append(FlagOut(severity=FlagSeverity.WARNING, code="llm_unavailable",
                                  message=f"The language model failed ({error}): topic relevance was not checked and "
@@ -526,8 +531,15 @@ def run(state: CaseState) -> dict:
     except llm_module.LLMNotConfigured:
         llm = None
     out = assess(ctx, metrics, llm)
-    with db_session.session_scope() as s:                  # 3. save
+    # 3. save main agent output first
+    with db_session.session_scope() as s:
         save_output(s, case_id, out)
-        if metrics.fresh and metrics.profile is not None:
-            save_profile(s, ctx.applicant_id, metrics.profile, now)
-    return {"results": {"research": out.model_dump(mode="json")}}
+
+    # 4. save refreshed profile independently so profile errors won't block evaluation output
+    if metrics.fresh and metrics.profile is not None:
+        try:
+            with db_session.session_scope() as s:
+                save_profile(s, ctx.applicant_id, metrics.profile, now)
+        except Exception as e:
+            # Log or handle caching errors gracefully without failing the entire node execution
+            pass
