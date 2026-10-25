@@ -109,13 +109,13 @@ def eligibility(c: Candidate, a: ApplicantSide, conflict: Conflict) -> tuple[boo
     return not reasons, reasons
     #if conflict.same_school:
             #reasons.append("studied or worked at a university where the applicant studied")#
-
+"""#prevoius reachability check we implemented it again in orchid
 def reachable(email: str | None) -> bool:
     """Can this referee be contacted? Yes if there is an email address, no if there is not. OpenAlex never gives
     emails, so a new candidate is unreachable until the Chancellor's office enters one."""
     text = (email or "").strip()
     return "@" in text and not text.startswith("@") and not text.endswith("@")
- 
+ """
 #HIGHLY UNLIKELY TO BE APPLIED DUE TO THE NATURE OF THE PROJECT WHICH IS AGENTIC: 
 #iff llm is not reachable then we use hardcoded rules
 def topic_overlap(candidate_topics: tuple[str, ...] | list[str], applicant_terms: list[str]) -> float:
