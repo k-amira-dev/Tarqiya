@@ -81,7 +81,7 @@ class ResearchJudgment(BaseModel):
     narrative: list[NarrativePart]
 
 
-# --read ------------------------------------------------------------------------------------------------
+# ---- phase 1: read ------------------------------------------------------------------------------------------------
 
 @dataclass
 class CachedProfile:
@@ -197,7 +197,7 @@ def build_context(s: Session, case_id: int) -> ResearchContext:
     return ctx
 
 
-#verified metrics
+# ---- phase 2a: verified metrics -----------------------------------------------------------------------------------
 
 @dataclass
 class VerifiedMetrics:
@@ -247,7 +247,7 @@ def save_profile(s: Session, applicant_id: int, profile: scholarly.AuthorProfile
     row.last_synced_at = now
 
 
-# rules $ llm
+# ---- phase 2b: rules + language model -----------------------------------------------------------------------------
 
 def _paper_flags(ctx: ResearchContext, verdicts: list[rules.PaperVerdict]) -> list[FlagOut]:
     flags = []
@@ -257,15 +257,20 @@ def _paper_flags(ctx: ResearchContext, verdicts: list[rules.PaperVerdict]) -> li
             flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="paper_needs_check",
                                  message=f"'{title}': {v.needs_check}.", entity_table="publication", entity_id=v.id))
         if not v.counted:
-            fact = next(p for p in ctx.papers if p.id == v.id)
-            missing_journal = fact.journal_class == JournalClass.NOT_COUNTED and not fact.journal_in_table
-            flags.append(FlagOut(
-                severity=FlagSeverity.WARNING if missing_journal else FlagSeverity.INFO,
-                code="journal_not_in_table" if missing_journal else "paper_not_counted",
-                message=f"'{title}' is not counted: {'; '.join(r for r in v.reasons if 'credited' not in r)}."
-                        + (" Ask the applicant to complete Section 5E for this journal, or import its ranking."
-                           if missing_journal else ""),
-                entity_table="publication", entity_id=v.id))
+                fact = next(p for p in ctx.papers if p.id == v.id)
+                missing_journal = fact.journal_class == JournalClass.NOT_COUNTED and not fact.journal_in_table
+                
+                #Fallback string when filtered array is empty
+                filtered_reasons = [r for r in v.reasons if "credited" not in r]
+                reasons_text = "; ".join(filtered_reasons) if filtered_reasons else "does not meet the required promotion criteria"
+                
+                flags.append(FlagOut(
+                    severity=FlagSeverity.WARNING if missing_journal else FlagSeverity.INFO,
+                    code="journal_not_in_table" if missing_journal else "paper_not_counted",
+                    message=f"'{title}' is not counted: {reasons_text}."
+                            + (" Ask the applicant to complete Section 5E for this journal, or import its ranking."
+                            if missing_journal else ""),
+                    entity_table="publication", entity_id=v.id))
     for pid, reason in ctx.disputes.items():
         flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="class_disputed",
                              message=f"The applicant disputes the class of '{ctx.records[pid]['title']}': {reason}",
@@ -359,7 +364,7 @@ def assess(ctx: ResearchContext, metrics: VerifiedMetrics, llm) -> AgentOutput:
                            flags=[FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="criteria_missing",
                                           message="No promotion criteria found for this case. Ask the admin.")])
 
-    #RULES --
+    # 1. RULES ------------------------------------------------------------------------------------------------
     verdicts = rules.classify_papers(ctx.papers, ctx.rank_date, ctx.max_supervision_papers)
     others = rules.apply_caps(ctx.other_items, ctx.rank_date, per_book_type=ctx.book_type_caps,
                               max_books_total=ctx.max_books_total, max_patents=ctx.max_patents,
@@ -434,7 +439,7 @@ def assess(ctx: ResearchContext, metrics: VerifiedMetrics, llm) -> AgentOutput:
 
     verify_claims([c for c in claims if c.verified is None], {"publication": set(ctx.records)})
 
-    # 3. VERDICT (rules only) --
+    # 3. VERDICT (rules only) ---------------------------------------------------------------------------------
     failed = [r for r in reqs if not r.passed]
     if failed and _would_pass_with_missing_journals(ctx):
         flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="result_depends_on_missing_journals",
@@ -505,6 +510,8 @@ def _verified_narrative(ctx: ResearchContext, j: ResearchJudgment) -> tuple[list
             kept.append(part.text.strip())
     return kept, claims
 
+
+# ---- the graph calls this ------------------------------------------------------------------------------------------
 
 def run(state: CaseState) -> dict:
     if use_stubs(state):
