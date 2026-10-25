@@ -13,7 +13,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-MAX_SHORTLIST = 10
+MAX_SHORTLIST = 10                          #max candidates in the shortlist
 REUSE_YEARS = 5
 REMINDER_EVERY = timedelta(days=14)          # flowchart: "2 weeks no response, send a reminder"
 NO_RESPONSE_LIMIT = timedelta(days=90)       # spec: 3 months without a report -> replacement referee
@@ -22,12 +22,12 @@ UAE = "AE"
 
 
 def name_key(name: str | None) -> str | None:
-    """A rough key for matching author names written differently: "Smith, John A." / "J. A. Smith" -> "smith j".
-    Used only to spot possible co-authors; a match is a conflict to be checked, never proof."""
+    """A rough key for matching author names written differently: "Saleh, Jamal A." / "J. A. Saleh" -> "smith j".
+    Used only to spot possible co-authors; a match is a conflict to be checked"""
     if not name:
         return None
     text = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
-    if "," in text:                                        # "Smith, John" -> "John Smith"
+    if "," in text:                                        # "Saleh, Jamal A." / "J. A. Saleh" 
         last, first = text.split(",", 1)
         text = f"{first} {last}"
     parts = [p for p in re.split(r"[^a-z]+", text) if p]
@@ -37,8 +37,9 @@ def name_key(name: str | None) -> str | None:
 
 
 def _norm_inst(name: str | None) -> str:
-    return re.sub(r"[^a-z]+", " ", (name or "").lower()).strip()
+    return re.sub(r"[^a-z]+", " ", (name or "").lower()).strip()  #“University-of-Sharjah” ← “university of sharjah”
 
+#card for possible candidates 
 @dataclass(frozen=True)
 class Candidate:
     key: str                                   # OpenAlex author id, e.g. "A5023888391"
