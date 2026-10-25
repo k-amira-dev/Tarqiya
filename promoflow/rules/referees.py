@@ -37,8 +37,10 @@ def name_key(name: str | None) -> str | None:
 
 
 def _norm_inst(name: str | None) -> str:
-    return re.sub(r"[^a-z]+", " ", (name or "").lower()).strip()  #“University-of-Sharjah” ← “university of sharjah”
-
+    """"The University of Jordan" and "university-of-jordan" -> "university of jordan"."""
+    text = re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
+    return text[4:] if text.startswith("the ") else text
+  
 #card for possible candidates 
 @dataclass(frozen=True)
 class Candidate:
@@ -69,13 +71,13 @@ class Conflict:
     same_institution: bool
     used_within_5_years: bool
 
-    @property
+    @property #confirm not a single conflict was found
     def clear(self) -> bool:
         return not (self.coauthor or self.same_institution or self.used_within_5_years)
 
 
 def conflicts(c: Candidate, a: ApplicantSide, recently_used: set[str]) -> Conflict:
-    coauthor = c.key in a.coauthor_ids or (name_key(c.name) in a.coauthor_name_keys if c.name else False)
+    coauthor = c.key in a.coauthor_ids or (name_key(c.name) in a.coauthor_name_keys if c.name else False) #is the candidate a coauthor with the applicant? via checking if the coauthor key is found in the applicant coauthors
   #comparison using the instituation ID or name after rewriting it for searching purpose
     same_inst = bool(c.institution_ids & a.institution_ids) or bool(
         {_norm_inst(n) for n in c.institution_names} & {_norm_inst(n) for n in a.institution_names} - {""})
