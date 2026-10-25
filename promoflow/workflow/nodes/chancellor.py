@@ -225,8 +225,8 @@ def plan(ctx: ShortlistContext, found: list[scholarly.AuthorProfile], llm) -> Pl
             out.model_name = llm_module.model_name()
     elif eligible:
         out.flags.append(FlagOut(severity=FlagSeverity.INFO, code="llm_unavailable",
-                                 message="No language model is configured; candidates were ranked by topic-word "
-                                         "overlap instead."))
+                                 message="No language model is configured; the candidates were not ranked by field "
+                                         "alignment."))
     unranked = [h for h in handles if h not in scores]
     for h in unranked:                       # the model did not rank them: no guess, a person ranks them
         scores[h] = (0.0, "Not ranked: the language model was unavailable.", DecisionBasis.RULE)
