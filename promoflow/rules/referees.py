@@ -62,7 +62,7 @@ class ApplicantSide:
     h_index: int | None = None
     citations: int | None = None
 
-
+#conflict of interest , note that 5 years rules is subejected to removel soon due to its unnecessity 
 @dataclass(frozen=True)
 class Conflict:
     coauthor: bool
@@ -75,13 +75,13 @@ class Conflict:
 
 
 def conflicts(c: Candidate, a: ApplicantSide, recently_used: set[str]) -> Conflict:
-    """`recently_used` = OpenAlex ids of referees invited on ANY case in the last 5 years."""
     coauthor = c.key in a.coauthor_ids or (name_key(c.name) in a.coauthor_name_keys if c.name else False)
+  #comparison using the instituation ID or name after rewriting it for searching purpose
     same_inst = bool(c.institution_ids & a.institution_ids) or bool(
         {_norm_inst(n) for n in c.institution_names} & {_norm_inst(n) for n in a.institution_names} - {""})
     return Conflict(coauthor, same_inst, c.key in recently_used)
 
-
+#note: if country is not clear then it's rejected since we can not prove it is not in the UAE
 def eligibility(c: Candidate, a: ApplicantSide, conflict: Conflict) -> tuple[bool, list[str]]:
     """(eligible, reasons it is not). Rank (Full Professor) cannot be checked from OpenAlex: a person confirms it."""
     reasons = []
