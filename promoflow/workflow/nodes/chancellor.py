@@ -238,11 +238,13 @@ def plan(ctx: ShortlistContext, found: list[scholarly.AuthorProfile], llm) -> Pl
         out.flags.append(FlagOut(severity=FlagSeverity.INFO, code="llm_unavailable",
                                  message="No language model is configured; candidates were ranked by topic-word "
                                          "overlap instead."))
-    terms = ctx.topic_terms + ctx.paper_titles
-    for h, p in handles.items():
-        if h not in scores:
-            scores[h] = (rules.topic_overlap(p.topics, terms), "Topic-word overlap with the applicant's field and "
-                         "paper titles.", DecisionBasis.RULE)
+    unranked = [h for h in handles if h not in scores]
+    for h in unranked:                       # the model did not rank them: no guess, a person ranks them
+        scores[h] = (0.0, "Not ranked: the language model was unavailable.", DecisionBasis.RULE)
+    if unranked:
+        out.flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="ranking_not_done",
+                                 message=f"{len(unranked)} candidate(s) were not ranked by field alignment because the "
+                                         "language model was unavailable. Rank them manually or run the agent again."))
     ordered = sorted(handles, key=lambda h: (-scores[h][0], -(handles[h].h_index or 0), handles[h].external_id))
     out.ranked = [(handles[h], *scores[h]) for h in ordered[:rules.MAX_SHORTLIST]]
 
