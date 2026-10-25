@@ -81,7 +81,7 @@ class ResearchJudgment(BaseModel):
     narrative: list[NarrativePart]
 
 
-# ---- phase 1: read ------------------------------------------------------------------------------------------------
+# --read ------------------------------------------------------------------------------------------------
 
 @dataclass
 class CachedProfile:
@@ -197,7 +197,7 @@ def build_context(s: Session, case_id: int) -> ResearchContext:
     return ctx
 
 
-#verified metrics -----------------------------------------------------------------------------------
+#verified metrics
 
 @dataclass
 class VerifiedMetrics:
@@ -247,7 +247,7 @@ def save_profile(s: Session, applicant_id: int, profile: scholarly.AuthorProfile
     row.last_synced_at = now
 
 
-# rules + language model -----------------------------------------------------------------------------
+# rules $ llm
 
 def _paper_flags(ctx: ResearchContext, verdicts: list[rules.PaperVerdict]) -> list[FlagOut]:
     flags = []
@@ -359,7 +359,7 @@ def assess(ctx: ResearchContext, metrics: VerifiedMetrics, llm) -> AgentOutput:
                            flags=[FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="criteria_missing",
                                           message="No promotion criteria found for this case. Ask the admin.")])
 
-    # 1. RULES ------------------------------------------------------------------------------------------------
+    #RULES --
     verdicts = rules.classify_papers(ctx.papers, ctx.rank_date, ctx.max_supervision_papers)
     others = rules.apply_caps(ctx.other_items, ctx.rank_date, per_book_type=ctx.book_type_caps,
                               max_books_total=ctx.max_books_total, max_patents=ctx.max_patents,
@@ -434,7 +434,7 @@ def assess(ctx: ResearchContext, metrics: VerifiedMetrics, llm) -> AgentOutput:
 
     verify_claims([c for c in claims if c.verified is None], {"publication": set(ctx.records)})
 
-    # 3. VERDICT (rules only) ---------------------------------------------------------------------------------
+    # 3. VERDICT (rules only) --
     failed = [r for r in reqs if not r.passed]
     if failed and _would_pass_with_missing_journals(ctx):
         flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="result_depends_on_missing_journals",
