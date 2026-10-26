@@ -539,4 +539,4 @@ def run(state: CaseState) -> dict:
         except Exception as e:
             # Log or handle caching errors gracefully without failing the entire node execution
             pass
-    return {"results": {"research": out.model_dump(mode="json")}}
+return {"results": {"research": out.model_dump(mode="json")}}
