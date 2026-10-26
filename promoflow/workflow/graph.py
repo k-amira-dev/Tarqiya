@@ -23,6 +23,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from promoflow.config import DATABASE_URL
+from promoflow.workflow import outreach
 from promoflow.workflow.nodes import chancellor, eligibility, report, research, service, teaching
 from promoflow.workflow.schemas import CaseState
 
@@ -98,6 +99,7 @@ def build_graph(checkpointer=None):
     g.add_node("dean_gate", dean_gate)
     g.add_node("chancellor", chancellor.run)
     g.add_node("referee_selection", referee_selection)
+    g.add_node("outreach", outreach.run)      
     g.add_node("end_not_eligible", _finish("not_eligible"))
     g.add_node("end_hod_revision", _finish("returned_by_hod"))
     g.add_node("end_dean_revision", _finish("returned_by_dean"))
@@ -110,7 +112,8 @@ def build_graph(checkpointer=None):
     g.add_conditional_edges("hod_gate", _approved("hod"), {"approve": "dean_gate", "revise": "end_hod_revision"})
     g.add_conditional_edges("dean_gate", _approved("dean"), {"approve": "chancellor", "revise": "end_dean_revision"})
     g.add_edge("chancellor", "referee_selection")
-    g.add_edge("referee_selection", END)
+    g.add_edge("referee_selection", "outreach")
+    g.add_edge("outreach", END)
     for name in ("end_not_eligible", "end_hod_revision", "end_dean_revision"):
         g.add_edge(name, END)
 
