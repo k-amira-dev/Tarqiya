@@ -513,7 +513,6 @@ def _verified_narrative(ctx: ResearchContext, j: ResearchJudgment) -> tuple[list
     return kept, claims
 
 
-# ---- the graph calls this ------------------------------------------------------------------------------------------
 
 def run(state: CaseState) -> dict:
     if use_stubs(state):
@@ -540,3 +539,4 @@ def run(state: CaseState) -> dict:
         except Exception as e:
             # Log or handle caching errors gracefully without failing the entire node execution
             pass
+    return {"results": {"research": out.model_dump(mode="json")}}
