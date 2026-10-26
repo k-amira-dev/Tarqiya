@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section5 import scopus as s5f
 from promoflow.ui import theme
@@ -11,10 +13,14 @@ K = "s5f_"
 
 
 def render(ctx: s5f.Section5FContext, editable: bool) -> None:
+    if editable:
+        entries_ui.panel("scopus", "s5_flash")
     with st.container(key="card_scopus"):
         theme.card_header("5F", "Scopus evidence", "A full-page screenshot of your Scopus author profile, "
                           "captured within 30 days of submission, showing name, affiliation, h-index and "
                           "total citations with the date visible.")
+        if editable:
+            entries_ui.autofill("scopus", K)
         e = ctx.evidence
         if e is not None:
             theme.html(f"""<div class="pf-kv"><div><span>h-index</span><b>{e.h_index}</b></div>

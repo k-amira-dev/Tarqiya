@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import OrgLevel
 from promoflow.db.session import session_scope
 from promoflow.dossier.section7 import policy_contributions as s7a5
@@ -14,6 +16,8 @@ LEVEL_LABEL = {OrgLevel.DEPARTMENT: "Department", OrgLevel.COLLEGE: "College", O
 
 
 def render(rows: list[s7a5.PolicyContributionRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("policy", "s7_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.contribution.id:
@@ -59,6 +63,7 @@ def _form(editable: bool, row: "s7a5.PolicyContributionRow | None") -> None:
     role_labels = {r.id: r.label for r in roles}
     with st.container(key=f"card_policy_form_{p.id if p else 'new'}"):
         theme.card_header("+", "Edit policy contribution" if p else "Add a policy contribution")
+        entries_ui.autofill("policy", prefix)
         policy_name = st.text_input("Policy / regulation", value=p.policy_name if p else "", key=prefix + "name")
         a, b = st.columns(2)
         level = a.selectbox("Level", list(OrgLevel), format_func=LEVEL_LABEL.get,

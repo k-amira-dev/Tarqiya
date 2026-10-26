@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section5 import conference as s5c
 from promoflow.ui import theme
@@ -11,6 +13,8 @@ K = "s5c_"
 
 
 def render(rows: list[s5c.ConferencePaperRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("conference", "s5_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.paper.id:
@@ -54,6 +58,7 @@ def _form(editable: bool, row: "s5c.ConferencePaperRow | None") -> None:
     today = date.today()
     with st.container(key=f"card_conf_form_{p.id if p else 'new'}"):
         theme.card_header("+", "Edit conference paper" if p else "Add a conference paper")
+        entries_ui.autofill("conference", prefix)
         title = st.text_input("Paper title", value=p.title if p else "", key=prefix + "title")
         a, b = st.columns(2)
         conference_title = a.text_input("Conference title", value=p.conference_title if p else "",

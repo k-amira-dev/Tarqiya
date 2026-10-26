@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section7 import admin_positions as s7a2
 from promoflow.ui import theme
@@ -12,6 +14,8 @@ K = "s7a2_"
 
 
 def render(rows: list[s7a2.AdminPositionRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("admin", "s7_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.position.id:

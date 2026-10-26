@@ -4,6 +4,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import GraduateDegree, SupervisionRole, SupervisionStatus
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import supervision as s6h
@@ -16,6 +18,8 @@ STATUS_LABEL = {SupervisionStatus.IN_PROGRESS: "In progress", SupervisionStatus.
 
 
 def render(rows: list[s6h.SupervisionRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("supervision", "s6_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.supervision.id:

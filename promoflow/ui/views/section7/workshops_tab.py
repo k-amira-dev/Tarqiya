@@ -4,6 +4,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import OrgLevel, WorkshopRole
 from promoflow.db.session import session_scope
 from promoflow.dossier.section7 import workshops as s7a3
@@ -16,6 +18,8 @@ ROLE_LABEL = {WorkshopRole.ORGANISER: "Organiser", WorkshopRole.LECTURER: "Lectu
 
 
 def render(rows: list[s7a3.WorkshopRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("workshop", "s7_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.workshop.id:

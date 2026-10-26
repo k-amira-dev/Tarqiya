@@ -1,6 +1,8 @@
 """Section 8 – Recommendation letter (spec chapter 12, repeatable, optional)."""
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier import section8 as s8
 from promoflow.dossier.section0 import EDITABLE
@@ -25,6 +27,8 @@ def render() -> None:
         return
 
     editable = ctx.status in EDITABLE
+    if editable:
+        entries_ui.panel("letter", "s8_flash")
     if flash := st.session_state.pop("s8_flash", None):
         st.success(flash, icon=":material/check_circle:")
     if not editable:
@@ -66,6 +70,7 @@ def _form() -> None:
     rel_labels = {r.id: r.label for r in relationships}
     with st.container(key="card_letter_form"):
         theme.card_header("+", "Add a recommendation letter")
+        entries_ui.autofill("letter", "s8_f_")
         writer_name = st.text_input("Writer's name", key="s8_f_name", help="Sensitive.")
         a, b = st.columns(2)
         writer_rank = a.text_input("Writer's rank / title", key="s8_f_rank")

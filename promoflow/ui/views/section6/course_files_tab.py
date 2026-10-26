@@ -1,6 +1,8 @@
 """6F · Course files & coordination — the tab inside the Section 6 (Teaching & Academic Advising) page."""
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import course_files as s6f
 from promoflow.ui import theme
@@ -10,6 +12,8 @@ K = "s6f_"
 
 
 def render(rows: list[s6f.CourseFileRow], course_options: dict[int, str], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("course_file", "s6_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.course_file.id:
@@ -58,6 +62,7 @@ def _form(editable: bool, course_options: dict[int, str], row: "s6f.CourseFileRo
     course_ids = list(course_options)
     with st.container(key=f"card_coursefile_form_{f.id if f else 'new'}"):
         theme.card_header("+", "Edit course file" if f else "Add a course file")
+        entries_ui.autofill("course_file", prefix)
         course_taught_id = st.selectbox("Course", course_ids, format_func=course_options.get,
                                         index=course_ids.index(f.course_taught_id) if f else None,
                                         placeholder="Choose a course", key=prefix + "course")

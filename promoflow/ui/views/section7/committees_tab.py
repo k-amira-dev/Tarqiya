@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import OrgLevel
 from promoflow.db.session import session_scope
 from promoflow.dossier.section7 import committees as s7a1
@@ -14,6 +16,8 @@ LEVEL_LABEL = {OrgLevel.DEPARTMENT: "Department", OrgLevel.COLLEGE: "College", O
 
 
 def render(rows: list[s7a1.CommitteeRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("committee", "s7_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.membership.id:

@@ -8,6 +8,7 @@ from promoflow.db.models import CourseTaught
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import courses as s6a
 from promoflow.ui import theme
+from promoflow.ui.views.section6 import imports_ui
 
 K = "s6a_"
 SEMESTER_LABEL = {Semester.FALL: "Fall", Semester.SPRING: "Spring", Semester.SUMMER: "Summer"}
@@ -25,6 +26,8 @@ def render(courses: list[CourseTaught], report, case_id: int, editable: bool) ->
         if editable:
             label = "Registrar report" if report is None else "Replace registrar report"
             upload = st.file_uploader(label, type=["pdf"], key=K + "report")
+            if upload is not None:
+                imports_ui.registrar(upload)
             if upload is not None and st.button("Upload report", icon=":material/save:", key=K + "report_save"):
                 with session_scope() as s:
                     s6a.save_registrar_report(s, case_id, st.session_state["current_user"].id,

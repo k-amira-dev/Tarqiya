@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section7 import community as s7b
 from promoflow.dossier.section7.common import funded_project_options
@@ -13,6 +15,8 @@ K = "s7b_"
 
 
 def render(rows: list[s7b.CommunityActivityRow], case_id: int, editable: bool) -> None:
+    if editable:
+        entries_ui.panel("community", "s7_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.activity.id:

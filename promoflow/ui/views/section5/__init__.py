@@ -37,7 +37,8 @@ def render() -> None:
 
     tabs = st.tabs(["5A · Journal papers", "5A-2 · Creative works", "5B · Books", "5C · Conference papers",
                    "5D · Funded projects", "5E · Classification form", "5F · Scopus evidence", "5G · Patents",
-                   "5H · Awards"])
+                   "5H · Awards"],
+                   key="s5_tabs", on_change="rerun")      # a keyed tab remembers which tab is open, so a save does not jump back to the first one
     with tabs[0]:
         papers_tab.render(ctx.current_rank_date, ctx.previously_rejected, ctx.papers, editable)
     with tabs[1]:

@@ -32,7 +32,8 @@ def render() -> None:
         st.info("This application has been submitted, so Section 7 is read-only.", icon=":material/lock:")
 
     tabs = st.tabs(["7A-1 · Committees", "7A-2 · Admin positions", "7A-3 · Workshops", "7A-4 · Trainings",
-                   "7A-5 · Policy contributions", "7B · Community service"])
+                   "7A-5 · Policy contributions", "7B · Community service"],
+                   key="s7_tabs", on_change="rerun")      # a keyed tab remembers which tab is open, so a save does not jump back to the first one
     with tabs[0]:
         committees_tab.render(ctx.committees, editable)
     with tabs[1]:

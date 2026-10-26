@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import DevelopmentDepth, OrgLevel
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import curriculum as s6d
@@ -16,6 +18,8 @@ DEPTH_LABEL = {DevelopmentDepth.DEEP: "Deep (book or objectives changed)", Devel
 
 
 def render(rows: list[s6d.CurriculumRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("curriculum", "s6_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.contribution.id:

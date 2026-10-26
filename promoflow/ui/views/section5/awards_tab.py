@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section5 import awards as s5h
 from promoflow.ui import theme
@@ -12,6 +14,8 @@ K = "s5h_"
 
 
 def render(rows: list[s5h.AwardRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("award", "s5_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.award.id:
@@ -56,6 +60,7 @@ def _form(editable: bool, row: "s5h.AwardRow | None") -> None:
     ids = list(options)
     with st.container(key=f"card_award_form_{a.id if a else 'new'}"):
         theme.card_header("+", "Edit award" if a else "Add an award")
+        entries_ui.autofill("award", prefix)
         name = st.text_input("Award / prize name", value=a.name if a else "", key=prefix + "name")
         c1, c2 = st.columns(2)
         awarding_body = c1.text_input("Awarding body", value=a.awarding_body if a else "", key=prefix + "body")

@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import InvestigatorRole, ProjectStatus
 from promoflow.db.session import session_scope
 from promoflow.dossier.section5 import funded as s5d
@@ -15,6 +17,8 @@ STATUS_LABEL = {ProjectStatus.ONGOING: "Ongoing", ProjectStatus.COMPLETED: "Comp
 
 
 def render(rows: list[s5d.FundedProjectRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("funded", "s5_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.project.id:
@@ -59,6 +63,7 @@ def _form(editable: bool, row: "s5d.FundedProjectRow | None") -> None:
     funder_ids = list(funder_options)
     with st.container(key=f"card_funded_form_{p.id if p else 'new'}"):
         theme.card_header("+", "Edit funded project" if p else "Add a funded project")
+        entries_ui.autofill("funded", prefix)
         title = st.text_input("Project title", value=p.title if p else "", key=prefix + "title")
         a, b = st.columns(2)
         funding_body = a.text_input("Funding body", value=p.funding_body if p else "", key=prefix + "body")

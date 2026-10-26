@@ -4,6 +4,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section7 import trainings as s7a4
 from promoflow.ui import theme
@@ -12,6 +14,8 @@ K = "s7a4_"
 
 
 def render(rows: list[s7a4.TrainingRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("training", "s7_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.training.id:

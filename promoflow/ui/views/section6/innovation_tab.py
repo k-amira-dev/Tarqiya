@@ -2,6 +2,8 @@
 Advising) page."""
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import innovation as s6g
 from promoflow.ui import theme
@@ -11,6 +13,8 @@ K = "s6g_"
 
 
 def render(rows: list[s6g.InnovationRow], course_options: dict[int, str], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("innovation", "s6_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.innovation.id:
@@ -57,6 +61,7 @@ def _form(editable: bool, course_options: dict[int, str], row: "s6g.InnovationRo
     course_ids = list(course_options)
     with st.container(key=f"card_innovation_form_{i.id if i else 'new'}"):
         theme.card_header("+", "Edit teaching innovation" if i else "Add a teaching innovation")
+        entries_ui.autofill("innovation", prefix)
         innovation_type_id = st.selectbox("Type", type_ids, format_func=type_labels.get,
                                           index=type_ids.index(i.innovation_type_id) if i else None,
                                           placeholder="Choose a type", key=prefix + "type")

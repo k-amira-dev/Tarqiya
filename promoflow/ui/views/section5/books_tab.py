@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import BookItemType
 from promoflow.db.session import session_scope
 from promoflow.dossier.section5 import books as s5b
@@ -14,6 +16,8 @@ TYPE_LABEL = {BookItemType.KNOWLEDGE_CONTRIBUTION: "Knowledge-contribution book"
 
 
 def render(rows: list[s5b.BookRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("book", "s5_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.book.id:
@@ -61,6 +65,7 @@ def _form(editable: bool, row: "s5b.BookRow | None") -> None:
     today = date.today()
     with st.container(key=f"card_book_form_{b.id if b else 'new'}"):
         theme.card_header("+", "Edit book entry" if b else "Add a book / book chapter")
+        entries_ui.autofill("book", prefix)
         item_type = st.selectbox("Item type", list(BookItemType), format_func=TYPE_LABEL.get,
                                  index=list(BookItemType).index(b.item_type) if b else None,
                                  placeholder="Choose a type", key=prefix + "type")

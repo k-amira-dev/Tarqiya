@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import peer_observations as s6b
 from promoflow.ui import theme
@@ -12,6 +14,8 @@ K = "s6b_"
 
 
 def render(rows: list[s6b.PeerObservationRow], course_options: dict[int, str], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("peer_observation", "s6_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.observation.id:
@@ -59,6 +63,7 @@ def _form(editable: bool, course_options: dict[int, str], row: "s6b.PeerObservat
     course_ids = list(course_options)
     with st.container(key=f"card_obs_form_{o.id if o else 'new'}"):
         theme.card_header("+", "Edit peer observation" if o else "Add a peer observation")
+        entries_ui.autofill("peer_observation", prefix)
         course_taught_id = st.selectbox("Course observed", course_ids, format_func=course_options.get,
                                         index=course_ids.index(o.course_taught_id) if o else None,
                                         placeholder="Choose a course", key=prefix + "course")

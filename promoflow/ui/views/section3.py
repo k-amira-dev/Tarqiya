@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.countries import COUNTRY_CODES, country_name
 from promoflow.db.enums import DegreeLevel
 from promoflow.db.session import session_scope
@@ -31,6 +33,9 @@ def render() -> None:
         return
 
     editable = ctx.status in EDITABLE
+    if editable:
+        entries_ui.panel("degree", "s3_flash")
+        entries_ui.panel("equivalency", "s3_flash")
     if flash := st.session_state.pop(K + "flash", None):
         st.success(flash, icon=":material/check_circle:")
     if not editable:
@@ -87,6 +92,7 @@ def _entry_form(case_id: int, today: date, editable: bool, row: "s3.DegreeRow | 
     prefix = f"s3_f_{d.id if d else 'new'}_"
     with st.container(key=f"card_degree_form_{d.id if d else 'new'}"):
         theme.card_header("+", "Edit degree" if d else "Add a degree")
+        entries_ui.autofill("degree", prefix)
         a, b = st.columns(2)
         level = a.selectbox("Degree level", list(DegreeLevel), format_func=LEVEL_LABEL.get,
                             index=list(DegreeLevel).index(d.level) if d else None,

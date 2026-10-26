@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import AuthorRole, JournalClass, Language, MainAuthorBasis, PublicationStatus
 from promoflow.db.session import session_scope
 from promoflow.dossier.section5 import papers as s5p
@@ -21,6 +23,9 @@ CLASS_LABEL = {JournalClass.CLASS_A: ("Class A", "green"), JournalClass.CLASS_B:
 
 def render(current_rank_date: date | None, previously_rejected: bool, rows: list[s5p.PublicationRow],
           editable: bool) -> None:
+    if editable:
+        entries_ui.panel("paper", "s5_flash")
+        entries_ui.panel("acceptance", "s5_flash")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.publication.id:
@@ -70,6 +75,8 @@ def _form(current_rank_date, previously_rejected: bool, editable: bool, row: "s5
     today = date.today()
     with st.container(key=f"card_paper_form_{p.id if p else 'new'}"):
         theme.card_header("+", "Edit journal paper" if p else "Add a journal paper")
+        entries_ui.autofill("paper", prefix)
+        entries_ui.autofill("acceptance", prefix)
         title = st.text_input("Paper title", value=p.title if p else "", key=prefix + "title")
         a, b = st.columns(2)
         journal_name = a.text_input("Journal name", value=p.journal_name if p else "", key=prefix + "journal")

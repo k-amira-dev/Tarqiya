@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier import section2 as s2
 from promoflow.dossier.section0 import EDITABLE
@@ -41,6 +43,8 @@ def render() -> None:
 
     _prefill(ctx)
     editable = ctx.status in EDITABLE
+    if editable:
+        entries_ui.panel("cv", "s2_flash")
 
     if flash := st.session_state.pop(K + "flash", None):
         st.success(flash, icon=":material/check_circle:")

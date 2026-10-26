@@ -4,6 +4,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import ActivityFormat
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import development as s6i
@@ -16,6 +18,8 @@ FORMAT_LABEL = {ActivityFormat.WORKSHOP: "Workshop", ActivityFormat.SEMINAR: "Se
 
 
 def render(rows: list[s6i.DevelopmentRow], editable: bool) -> None:
+    if editable:
+        entries_ui.panel("development", "s6_flash")
     theme.html('<div class="pf-note">Activities you organised or delivered (rather than attended) go in '
               "§7A-3 (service) instead.</div>")
     editing = st.session_state.get(K + "editing")

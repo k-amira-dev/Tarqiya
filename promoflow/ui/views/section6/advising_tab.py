@@ -5,12 +5,15 @@ from promoflow.db.enums import Semester
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import advising as s6e
 from promoflow.ui import theme
+from promoflow.ui.views.section6 import imports_ui
 from promoflow.ui.views.section6.courses_tab import SEMESTER_LABEL
 
 K = "s6e_"
 
 
 def render(rows: list[s6e.AdvisingRow], editable: bool) -> None:
+    if editable:
+        imports_ui.advising()
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.semester.id:

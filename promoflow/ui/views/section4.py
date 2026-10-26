@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.countries import COUNTRY_CODES, country_name
 from promoflow.db.enums import Rank
 from promoflow.db.session import session_scope
@@ -32,6 +34,9 @@ def render() -> None:
         return
 
     editable = ctx.status in EDITABLE
+    if editable:
+        entries_ui.panel("rank", "s4_flash")
+        entries_ui.panel("position", "s4_flash")
     if flash := st.session_state.pop(K + "flash", None):
         st.success(flash, icon=":material/check_circle:")
     if not editable:
@@ -98,6 +103,7 @@ def _rank_form(today: date, editable: bool, row: "s4.RankRow | None") -> None:
     prefix = f"s4_rf_{r.id if r else 'new'}_"
     with st.container(key=f"card_rank_form_{r.id if r else 'new'}"):
         theme.card_header("+", "Edit rank" if r else "Add a rank")
+        entries_ui.autofill("rank", prefix)
         a, b = st.columns(2)
         rank = a.selectbox("Academic rank", list(Rank), format_func=RANK_LABEL.get,
                            index=list(Rank).index(r.rank) if r else None, placeholder="Choose a rank",
@@ -181,6 +187,7 @@ def _position_form(editable: bool, row: "s4.PositionRow | None") -> None:
     prefix = f"s4_pf_{p.id if p else 'new'}_"
     with st.container(key=f"card_position_form_{p.id if p else 'new'}"):
         theme.card_header("+", "Edit non-academic position" if p else "Add a non-academic position")
+        entries_ui.autofill("position", prefix)
         a, b = st.columns(2)
         position = a.text_input("Position", value=p.position if p else "", key=prefix + "position")
         employer = b.text_input("Employer", value=p.employer if p else "", key=prefix + "employer")

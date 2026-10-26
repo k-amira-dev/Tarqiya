@@ -34,7 +34,8 @@ def render() -> None:
 
     tabs = st.tabs(["6A · Courses taught", "6B · Peer observations", "6C · Student satisfaction",
                    "6D · Curriculum development", "6E · Academic advising", "6F · Course files",
-                   "6G · Teaching innovation", "6H · Graduate supervision", "6I · Development activities"])
+                   "6G · Teaching innovation", "6H · Graduate supervision", "6I · Development activities"],
+                   key="s6_tabs", on_change="rerun")      # a keyed tab remembers which tab is open, so a save does not jump back to the first one
     with tabs[0]:
         courses_tab.render(ctx.courses, ctx.registrar_report, ctx.case_id, editable)
     with tabs[1]:
