@@ -41,6 +41,8 @@ GROQ_API_KEY = _setting("GROQ_API_KEY", "")
 # The model name must be one the key can use today. Groq retires models over time (llama-3.3-70b-versatile no longer
 # works); the list of available models is at https://api.groq.com/openai/v1/models (needs the key).
 GROQ_MODEL = _setting("GROQ_MODEL", "openai/gpt-oss-120b")
+# The model that reads scanned pages (it must accept images). Same Groq key.
+GROQ_VISION_MODEL = _setting("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 
 # DEVELOPMENT ONLY. When set to 1, the submission-window rule (first week of January, April and October) is ignored,
 # so a whole dossier can be submitted and reviewed on any day. Leave it unset everywhere else. The Review & Submit

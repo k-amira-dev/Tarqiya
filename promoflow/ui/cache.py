@@ -24,6 +24,9 @@ def _bump_version() -> None:
         pass
 
 
+bump_version = _bump_version
+
+
 if _bump_version not in db_session.write_hooks:
     db_session.write_hooks.append(_bump_version)
 
