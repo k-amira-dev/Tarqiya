@@ -5,7 +5,7 @@ from promoflow.db.enums import RoleName
 from promoflow.ui import theme
 from promoflow.ui.auth import ROLE_LABELS, CurrentUser, logout
 from promoflow.ui.views import (
-    dashboard, reviews, section0, section1, section2, section3, section4, section5, section6, section7, section8,
+    about, dashboard, reviews, section0, section1, section2, section3, section4, section5, section6, section7, section8,
     section9, section10, section11,
 )
 
@@ -27,8 +27,10 @@ SECTIONS = [
 
 
 def pages_for(user: CurrentUser) -> dict[str, st.Page]:
-    pages = {"home": st.Page(dashboard.render, title="Dashboard", icon=":material/space_dashboard:",
-                             url_path="home", default=True)}
+    # "How PromoFlow works" is the first page everyone lands on; the dashboard is one click away.
+    pages = {"about": st.Page(about.render, title="How PromoFlow works", icon=":material/lightbulb:",
+                              url_path="about", default=True),
+             "home": st.Page(dashboard.render, title="Dashboard", icon=":material/space_dashboard:", url_path="home")}
     if user.has(RoleName.APPLICANT):
         for code, title, icon, url_path, render in SECTIONS:
             pages[f"section{code}"] = st.Page(render, title=title, icon=icon, url_path=url_path)
@@ -41,6 +43,7 @@ def sidebar(user: CurrentUser, pages: dict[str, st.Page]) -> None:
     with st.sidebar:
         theme.html(f'<div class="pf-brand">{theme.logo(34)}<div><b>PromoFlow</b>'
                    '<small>FACULTY PROMOTION REVIEW</small></div></div>')
+        st.page_link(pages["about"], label="How PromoFlow works", icon=":material/lightbulb:")
         st.page_link(pages["home"], label="Dashboard", icon=":material/space_dashboard:")
 
         if user.has(RoleName.APPLICANT):

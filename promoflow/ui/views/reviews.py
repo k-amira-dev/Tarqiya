@@ -4,7 +4,7 @@ import streamlit as st
 
 from promoflow.db.enums import Gate, GateOutcome, RoleName
 from promoflow.db.session import session_scope
-from promoflow.ui import cache, theme
+from promoflow.ui import cache, report_view as rv, theme
 from promoflow.workflow import review_service
 
 K = "rev_"
@@ -15,8 +15,8 @@ SECTION_TITLES = {
     "4": "Ranks & experience", "5": "Research", "6": "Teaching & advising", "7": "University & community service",
     "8": "Recommendation letters", "9": "Conditions form", "10": "Cover letter",
 }
-AGENT_TITLE = {"eligibility": "Eligibility Checker", "research": "Research Agent", "teaching": "Teaching Agent",
-               "service": "Service Agent"}
+# The evaluations' names as shown to people (the code calls them agents; the screens never do).
+AGENT_TITLE = rv.TITLE
 VERDICT = {"pass": ("green", "Pass"), "fail": ("red", "Does not pass"), "needs_human": ("amber", "Needs a person"),
            "incomplete": ("amber", "Incomplete")}
 MARK = {True: ("ok", "✓"), False: ("fail", "✕"), None: ("warn", "!")}
@@ -27,7 +27,7 @@ def render() -> None:
     theme.html("""
     <div class="pf-hero"><div class="crumb">REVIEWS</div>
     <h1>Cases awaiting my decision</h1>
-    <p>The agents prepare a report; you decide. Nothing moves to the next step until you approve it or return it
+    <p>PromoFlow prepares a report; you decide. Nothing moves to the next step until you approve it or return it
     to the applicant.</p></div>""")
     if not user.has(RoleName.HOD, RoleName.DEAN):
         st.info("Only the Head of Department and the Dean review cases here.", icon=":material/info:")
@@ -46,7 +46,7 @@ def _list(user) -> None:
         cache.clear()
         st.rerun()
     with session_scope() as s:
-        cases = review_service.waiting_cases(s, user.roles)
+        cases = review_service.waiting_cases(s, user.roles, user.id)
     if not cases:
         st.info("No cases are waiting for your decision.", icon=":material/inbox:")
         return
@@ -66,23 +66,27 @@ def _detail(user, case_id: int) -> None:
         st.session_state.pop(CASE_KEY)
         st.rerun()
     try:
-        d = cache.load_cached(f"pfc:review:{case_id}", lambda s: review_service.case_detail(s, case_id, user.roles))
+        d = cache.load_cached(f"pfc:review:{case_id}", lambda s: review_service.case_detail(s, case_id, user.roles, user.id))
     except review_service.NotAllowed as e:
         st.session_state.pop(CASE_KEY, None)
         st.warning(str(e))
         return
 
-    chip = {True: ("green", "All three agents pass"), False: ("red", "At least one agent does not pass"),
+    placeholders = [rv.TITLE[n] for n, o in (d.report["sections"].items() if d.report else []) if o.get("is_stub")]
+    chip = {True: ("green", "All available evaluations pass" if placeholders else "All three evaluations pass"),
+            False: ("red", "At least one evaluation does not pass"),
             None: ("amber", "Needs your judgement")}[d.report["overall_pass"] if d.report else None]
     with st.container(key="card_case_head"):
         theme.card_header("→", d.applicant_name, f"{d.department} · {d.track.replace('_', ' ').title()}"
                           f"{' · ' + d.specialization if d.specialization else ''}")
         theme.html(f'<span class="pf-chip {chip[0]}">{chip[1]}</span> '
-                   f'<span class="pf-chip grey">Waiting for the {GATE_LABEL[d.gate]}</span>')
+                   f'<span class="pf-chip grey">Waiting for the {GATE_LABEL[d.gate]}</span>'
+                   + "".join(f' <span class="pf-chip grey">{t}: not built yet</span>' for t in placeholders))
 
     if d.report is None:
         st.warning("The report is not ready yet. Try again in a moment.", icon=":material/hourglass_top:")
         return
+    _summary_strip(d.report)
     _flags_card(d.report)
     for name in ("eligibility", "research", "teaching", "service"):
         out = d.report.get("eligibility") if name == "eligibility" else d.report["sections"].get(name)
@@ -96,7 +100,7 @@ def _detail(user, case_id: int) -> None:
 def _flags_card(report: dict) -> None:
     flags = report["flags"]
     with st.container(key="card_flags"):
-        theme.card_header("!", "Flags for you", "Everything the agents want a person to look at.")
+        theme.card_header("!", "Flags for you", "Everything the evaluations flagged for a person to look at.")
         if not flags:
             theme.html('<div class="pf-note">No flags.</div>')
             return
@@ -111,25 +115,86 @@ def _flags_card(report: dict) -> None:
         theme.html(rows)
 
 
+def _summary_strip(report: dict) -> None:
+    """Four tiles at the top: each evaluation's result in one glance."""
+    tiles = ""
+    for name in ("eligibility", "research", "teaching", "service"):
+        out = report.get("eligibility") if name == "eligibility" else report["sections"].get(name)
+        if not out:
+            continue
+        t = rv.summary(name, out)
+        kind, text = ("grey", "Placeholder") if out.get("is_stub") else VERDICT.get(t.verdict, ("grey", t.verdict))
+        tiles += (f'<div class="pf-sumtile"><h5>{theme.esc(t.title)}</h5><div class="big">{theme.esc(t.figure)}</div>'
+                  f'<div class="sub">{theme.esc(t.detail)}</div><span class="pf-chip {kind}">{text}</span></div>')
+    theme.html(f'<div class="pf-sum">{tiles}</div>')
+
+
 def _agent_card(name: str, out: dict) -> None:
-    kind, text = VERDICT.get(out["verdict"], ("grey", out["verdict"]))
+    kind, text = ("grey", "Placeholder") if out.get("is_stub") else VERDICT.get(out["verdict"], ("grey", out["verdict"]))
+    title = rv.TITLE[name]
+    table = rv.points_table(out)
     with st.container(key=f"card_agent_{name}"):
-        theme.card_header(name[:1].upper(), AGENT_TITLE[name], out.get("narrative") or "")
-        theme.html(f'<span class="pf-chip {kind}">{text}</span>')
+        # No long paragraph: the numbers are in the score banner and the table, the reasoning is one click away.
+        theme.card_header(name[:1].upper(), title, "" if table else (out.get("narrative") or ""))
         if out.get("is_stub"):
-            theme.html('<div class="pf-note">Placeholder: this agent has not been built yet, so this result '
+            theme.html(f'<span class="pf-chip {kind}">{text}</span>')
+            theme.html('<div class="pf-note">Placeholder: this evaluation has not been built yet, so this result '
                        "carries no meaning.</div>")
-        rows = ""
-        for c in out.get("criteria", []):
-            cls, mark = MARK[c["passed"]]
-            figures = ""
-            if c.get("required") is not None or c.get("actual") is not None:
-                figures = f"required {c.get('required', '–')}, actual {c.get('actual', '–')}"
-            ref = f" · Policy {c['policy_ref']}" if c.get("policy_ref") else ""
-            rows += (f'<div class="pf-check"><div class="ic {cls}">{mark}</div><div><b>{theme.esc(c["label"])}</b>'
-                     f'<small>{theme.esc(figures)}{theme.esc(ref)}</small></div></div>')
-        if rows:
-            theme.html(rows)
+            return
+        if table:
+            _points_view(table, kind, text)
+        else:
+            theme.html(f'<span class="pf-chip {kind}">{text}</span>')
+            _checks_table(rv.check_rows(out))
+
+
+def _points_view(table: "rv.PointsTable", kind: str, text: str) -> None:
+    """Teaching / Service: the score banner, the points table and the reasoning."""
+    mx = table.max_total
+    banner = f'<div class="big">{rv.g(table.total)}{f"<small> / {rv.g(mx)}</small>" if mx else ""}</div>'
+    meter = ""
+    if mx:
+        fill = min(table.total / mx, 1) * 100
+        color = "var(--g-500)" if table.passed else "var(--red)"
+        mark = f'<u style="left:{table.pass_mark / mx * 100:.1f}%"></u>' if table.pass_mark is not None else ""
+        meter = (f'<div class="pf-meter-wrap"><div class="pf-meter"><i style="width:{fill:.1f}%;background:{color}">'
+                 f'</i>{mark}</div><div class="pf-meter-lab">Pass mark {rv.g(table.pass_mark)} '
+                 f'(the black line) · <span class="pf-chip {kind}">{text}</span></div></div>')
+    theme.html(f'<div class="pf-score">{banner}{meter}</div>')
+
+    rows = ""
+    for r in table.rows:
+        if r.no_evidence:
+            cell = '<span class="pf-tag none">No evidence entered</span>'
+        else:
+            cls = "g" if (r.share or 0) >= 0.75 else "a" if (r.share or 0) >= 0.4 else "r"
+            bar = f'<div class="pf-bar"><i class="{cls}" style="width:{(r.share or 0) * 100:.0f}%"></i></div>'                 if r.max_points else ""
+            cell = f'<div class="pf-pts"><b>{rv.g(r.points)} / {rv.g(r.max_points)}</b>{bar}</div>'                 if r.max_points else f'<div class="pf-pts"><b>{rv.g(r.points)}</b></div>'
+        conf = (f'<span class="pf-tag{" low" if r.confidence == "Low" else ""}">{r.confidence}</span>'
+                if r.confidence and not r.no_evidence else "")
+        rows += (f'<tr><td class="n">{r.item_no}</td><td>{theme.esc(r.label)}</td><td>{cell}</td>'
+                 f'<td><span class="pf-tag">{theme.esc(r.how)}</span></td><td>{conf}</td></tr>')
+    theme.html('<table class="pf-tbl"><thead><tr><th>#</th><th>What is assessed</th><th>Points</th>'
+               f'<th>How decided</th><th>Confidence</th></tr></thead><tbody>{rows}</tbody></table>')
+
+    with st.expander("Why these points? The reasoning for each item"):
+        theme.html("".join(
+            f'<div class="pf-reason"><b>Item {r.item_no} · {rv.g(r.points)} points.</b> {theme.esc(r.reason)}</div>'
+            for r in table.rows))
+
+
+def _checks_table(checks: list) -> None:
+    """Eligibility: one row per condition, with what the policy asks for and what the applicant has."""
+    rows = ""
+    for c in checks:
+        cls, mark = MARK[c.passed]
+        ref = f'<br><small style="color:var(--muted)">Policy {theme.esc(c.policy_ref)}</small>' if c.policy_ref else ""
+        rows += (f'<tr><td>{theme.esc(c.label)}{ref}</td><td class="r">{rv.g(c.required)}</td>'
+                 f'<td class="r">{rv.g(c.actual)}</td><td class="r"><span class="pf-res {cls}">{mark}</span></td></tr>')
+    if rows:
+        theme.html('<table class="pf-tbl"><thead><tr><th>Condition</th><th class="r" style="text-align:right">'
+                   'Required</th><th class="r" style="text-align:right">Actual</th>'
+                   f'<th style="text-align:right">Met</th></tr></thead><tbody>{rows}</tbody></table>')
 
 
 def _decisions_card(decisions: list) -> None:

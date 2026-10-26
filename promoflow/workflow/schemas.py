@@ -28,6 +28,7 @@ class CriterionOut(BaseModel):
     label: str                            # the sentence a person reads in the report
     required: float | None = None         # what the policy asks for (a number), if it is numeric
     actual: float | None = None           # what this applicant has
+    max_value: float | None = None        # the most that can be scored (points rows only); lets the report show "4 / 4"
     passed: bool | None = None            # None = a human must decide
     policy_ref: str | None = None         # clause quoted to the user, e.g. "Att. 2, p.1"
 

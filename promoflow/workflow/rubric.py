@@ -289,11 +289,11 @@ def assess(ctx: Context, llm, profile: Profile) -> AgentOutput:
     # then one row per item.
     by_no = {s.item_no: s for s in applicable}
     criteria = [CriterionOut(key=f"{rubric}_total", label=profile.title, required=ctx.pass_points, actual=total,
-                             passed=total >= ctx.pass_points, policy_ref=profile.policy_ref)]
+                             max_value=ctx.total_points, passed=total >= ctx.pass_points, policy_ref=profile.policy_ref)]
     criteria += ctx.checks
     criteria += [CriterionOut(key=f"item_{l.item_no}", label=f"Item {l.item_no}: {by_no[l.item_no].text}"[:200],
                               required=by_no[l.item_no].min_points, actual=l.suggested_points,
-                              passed=l.suggested_points >= by_no[l.item_no].min_points and l.suggested_points > 0,
+                              max_value=by_no[l.item_no].max_points, passed=l.suggested_points >= by_no[l.item_no].min_points and l.suggested_points > 0,
                               policy_ref=profile.policy_ref) for l in lines]
 
     # STEP 5 - the verdict. INCOMPLETE if the model was unavailable; NEEDS_HUMAN if any score is low-confidence or a

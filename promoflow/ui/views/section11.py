@@ -75,7 +75,7 @@ def _research_card(ctx: s11.Section11Context) -> None:
     r = ctx.research
     with st.container(key="card_research_snapshot"):
         theme.card_header("5A", "Research counts (preview)",
-                          "Simple counts from Section 5, not the full Research Agent check (caps and "
+                          "Simple counts from Section 5, not the full Research evaluation (caps and "
                           "cross-checks aren't applied yet).")
         rows = [
             ("Total papers submitted", r.total_papers, r.min_total_publications),

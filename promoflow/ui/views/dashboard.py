@@ -44,8 +44,8 @@ def render() -> None:
     else:
         theme.html("""
         <div class="pf-tiles">
-          <div class="pf-tile hi"><h4>Reviews</h4><p>Cases waiting for your decision appear under Reviews. The agents
-            prepare a report for each one; you approve it or return it to the applicant.</p></div>
+          <div class="pf-tile hi"><h4>Reviews</h4><p>Cases waiting for your decision appear under Reviews. PromoFlow
+            prepares a report for each one; you approve it or return it to the applicant.</p></div>
           <div class="pf-tile"><h4>Coming soon</h4><p>Referee selection for the Chancellor is the next part of PromoFlow
             to be built.</p></div>
         </div>""")
