@@ -40,5 +40,29 @@ def render(paper_rows: list[s5p.PublicationRow], case_id: int, editable: bool) -
             with session_scope() as s:
                 s5e.save_signed_form(s, case_id, st.session_state["current_user"].id,
                                     (upload.name, upload.getvalue()))
-            st.session_state["s5_flash"] = "Signed classification form uploaded."
+            with st.spinner("Reading the form…"):
+                note = _declare_journals(case_id, upload.getvalue())
+            st.session_state["s5_flash"] = "Signed classification form uploaded. " + note
             st.rerun()
+
+
+def _declare_journals(case_id: int, data: bytes) -> str:
+    """Read the uploaded form and add its journals (that the table lacks) so the papers are counted. Returns a sentence for the applicant."""
+    from datetime import date
+
+    from promoflow.extraction.doc_llm import ReadFailed
+    from promoflow.extraction.picture_doc import read_entry_file
+    from promoflow.ui.views import entries_ui
+
+    text_llm, vision_llm = entries_ui._models()
+    if text_llm is None:
+        return "The form could not be read automatically here, so the journals were not classified."
+    try:
+        form, _, _ = read_entry_file(data, s5e.ClassificationForm, text_llm, vision_llm)
+    except ReadFailed as e:
+        return f"The journals in the form were not classified: {e}"
+    with session_scope() as s:
+        added = s5e.declare_journals_from_form(s, case_id, form, date.today().year)
+    if not added:
+        return "No new journals were needed: the papers' journals are already known, or the form did not match them (check the ISSN and journal name in 5A)."
+    return "Journals counted from the form: " + "; ".join(added) + "."
