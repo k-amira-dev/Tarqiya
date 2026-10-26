@@ -157,16 +157,27 @@ DEMO_JOURNALS = [
 # Fictional organisation for development only.
 DEV_COLLEGES = [("COMP", "College of Computing and Informatics", [("CS", "Computer Science"),
                                                                    ("IS", "Information Systems")]),
-                ("ENG", "College of Engineering", [("EE", "Electrical Engineering")])]
+                ("ENG", "College of Engineering", [("EE", "Electrical Engineering")]),
+                ("COMM", "College of Communication", [("MC", "Mass Communication")])]
 
 # Fictional test accounts for development only. They are created by seed_org_and_users(); real accounts are made
 # with `python -m promoflow.admin create-user`.
 DEV_USERS = [  # email, full name, department code, roles [(role, scope)]
     ("applicant@promoflow.test", "Test Applicant", "CS", [(RoleName.APPLICANT, None)]),
     ("hod.cs@promoflow.test", "Test Head of CS", "CS", [(RoleName.APPLICANT, None), (RoleName.HOD, "CS")]),
-    ("dean.comp@promoflow.test", "Test Dean of Computing", "CS", [(RoleName.DEAN, "COMP")]),
+    # A Dean can also be an applicant (an acting Dean needs a promotion too), exactly like a Head of Department.
+    ("dean.comp@promoflow.test", "Test Dean of Computing", "CS", [(RoleName.APPLICANT, None), (RoleName.DEAN, "COMP")]),
     ("chancellor@promoflow.test", "Test Chancellor", None, [(RoleName.CHANCELLOR, None)]),
     ("admin@promoflow.test", "Test Admin", None, [(RoleName.ADMIN, None)]),
+    # Used to try the upload-and-autofill forms with the sample dossier PDFs (Electrical Engineering, like B01).
+    ("autotest@promoflow.test", "Dr. Auto Test", "EE", [(RoleName.APPLICANT, None)]),
+    # A clean applicant in Computer Science, the department that has both a HoD and a Dean account, so a case from it
+    # can go through the whole review (applicant -> hod.cs -> dean.comp).
+    ("tester@promoflow.test", "Dr. Test Four", "CS", [(RoleName.APPLICANT, None)]),
+    # The fictional Mass Communication dossier (docs/generated_dossiers/D01_media_altamimi): the applicant and her reviewers.
+    ("samira.altamimi@promoflow.test", "Dr. Samira Al-Tamimi", "MC", [(RoleName.APPLICANT, None)]),
+    ("huda.salem@promoflow.test", "Dr. Huda Salem", "MC", [(RoleName.APPLICANT, None), (RoleName.HOD, "MC")]),
+    ("walid.mansour@promoflow.test", "Prof. Walid Mansour", "MC", [(RoleName.APPLICANT, None), (RoleName.DEAN, "COMM")]),
 ]
 
 

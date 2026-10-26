@@ -188,7 +188,10 @@ def start_review(case_id: int, *, options: dict | None = None, wait: bool = Fals
 
 
 def _has_role(s, user_id: int, role: RoleName, case: PromotionCase) -> bool:
-    """HoD decides only for their own department, the Dean for their own college, the Chancellor for all."""
+    """HoD decides only for their own department, the Dean for their own college, the Chancellor for all.
+    Nobody decides on their own application, whatever roles they hold (a Head or an acting Dean may also be an applicant)."""
+    if case.applicant_id == user_id:
+        return False
     applicant = s.get(User, case.applicant_id)
     query = select(UserRole.id).where(UserRole.user_id == user_id, UserRole.role == role)
     if role == RoleName.HOD:
@@ -303,7 +306,7 @@ class CaseDetail:
     decisions: list[DecisionRow]
 
 
-def _waiting_query(grants: Iterable[RoleGrant]):
+def _waiting_query(grants: Iterable[RoleGrant], user_id: int | None = None):
     """Build the database query for "cases this reviewer may see".
 
     Each role the person holds adds one allowed combination: a HoD sees cases at the HoD gate whose applicant is in
@@ -317,30 +320,33 @@ def _waiting_query(grants: Iterable[RoleGrant]):
             scopes.append(and_(PromotionCase.status == CaseStatus.DEAN_REVIEW, User.college_id == g.college_id))
     if not scopes:
         return None
-    return (select(PromotionCase, User, Department.name_en)
-            .join(User, User.id == PromotionCase.applicant_id)
-            .outerjoin(Department, Department.id == User.department_id)
-            .where(or_(*scopes)).order_by(PromotionCase.submitted_at))
+    query = (select(PromotionCase, User, Department.name_en)
+             .join(User, User.id == PromotionCase.applicant_id)
+             .outerjoin(Department, Department.id == User.department_id)
+             .where(or_(*scopes)).order_by(PromotionCase.submitted_at))
+    # A reviewer never sees their own application in their list (see _has_role).
+    return query.where(PromotionCase.applicant_id != user_id) if user_id is not None else query
 
 
 def _gate_of(case: PromotionCase) -> str:
     return "hod" if case.status == CaseStatus.HOD_REVIEW else "dean"
 
 
-def waiting_cases(s, grants: Iterable[RoleGrant]) -> list[WaitingCase]:
-    """The list on the Reviews page. `s` is a database session, `grants` are the roles the logged-in user holds."""
-    query = _waiting_query(grants)
+def waiting_cases(s, grants: Iterable[RoleGrant], user_id: int | None = None) -> list[WaitingCase]:
+    """The list on the Reviews page. `s` is a database session, `grants` are the roles the logged-in user holds,
+    `user_id` (when given) keeps the reviewer's own application out of the list."""
+    query = _waiting_query(grants, user_id)
     if query is None:
         return []
     return [WaitingCase(case.id, user.full_name or user.email, dept or "–", case.track.value, case.submitted_at,
                         _gate_of(case)) for case, user, dept in s.execute(query)]
 
 
-def case_detail(s, case_id: int, grants: Iterable[RoleGrant]) -> CaseDetail:
+def case_detail(s, case_id: int, grants: Iterable[RoleGrant], user_id: int | None = None) -> CaseDetail:
     """One waiting case in full. Raises NotAllowed unless it is waiting at one of the reviewer's own gates."""
     # Re-using the same query (plus "and this case id") means the permission check cannot be forgotten or bypassed
     # by typing a case number: a case outside the reviewer's scope simply returns no row.
-    query = _waiting_query(grants)
+    query = _waiting_query(grants, user_id)
     row = s.execute(query.where(PromotionCase.id == case_id)).first() if query is not None else None
     if row is None:
         raise NotAllowed("This case is not waiting for your decision.")

@@ -41,6 +41,10 @@ def test_login_profile_dashboard_logout(app_env):
     at = login(at, "applicant@promoflow.test")
     assert "Complete your profile" in page_text(at)
     at = complete_profile(at, "E-1001")
+    assert "How PromoFlow works" in page_text(at)          # the first page is the overview, for anyone new
+    assert "The promotion in six steps" in page_text(at)
+    [b for b in at.button if "dashboard" in b.label.lower()][0].click()
+    at = at.run()
     assert "Welcome back, Test" in page_text(at)
     assert "Your application" in page_text(at)
     at.sidebar.button(key="logout").click()
