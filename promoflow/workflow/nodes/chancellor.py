@@ -1,6 +1,4 @@
 """Chancellor's Office Agent: shortlist of up to 10 external referees with conflict-of-interest checks.
-Owner: Khadidja. STUB for now. The Chancellor selects; the agent never approves.
-
 HOW IT FITS IN: this node runs AFTER the Dean has approved the case. It prepares a shortlist of candidate referees
 and stores it in `state["shortlist"]`. The graph then pauses (graph.py, `referee_selection`) and shows the shortlist
 to the Chancellor, who picks the referees. Nothing here decides anything: it only prepares the choice.
