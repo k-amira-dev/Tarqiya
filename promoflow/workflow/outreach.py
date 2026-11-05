@@ -152,7 +152,9 @@ def ready(referee: Referee) -> list[str]:
     if not referee.email:
         missing.append("email")
     if referee.rank is None:
-        missing.append("confirmed rank")
+        missing.append("rank")
+    elif not referee.rank_verified:
+        missing.append("rank verified by a person")
     elif referee.rank != Rank.PROFESSOR:
         missing.append("Full Professor rank (recorded rank is " + referee.rank.value.replace("_", " ") + ")")
     return missing
@@ -209,13 +211,15 @@ def run(state: CaseState) -> dict:
 
 
 def confirm_referee(referee_id: int, *, email: str | None = None, rank: Rank | None = None) -> None:
-    """The Chancellor's office fills in what OpenAlex cannot give (until there is a page for it)."""
+    """A person verifies (and corrects if needed) the rank and email read from ORCID. Saving marks the rank verified."""
     with db_session.session_scope() as s:
         ref = s.get(Referee, referee_id)
         if email:
             ref.email = email.strip()
         if rank:
             ref.rank = rank
+        if ref.rank is not None:
+            ref.rank_verified = True
 
 
 def suggest_contact(referee_id: int, get=None) -> "scholarly.OrcidSuggestion | None":
