@@ -175,6 +175,7 @@ class Plan:
     flags: list[FlagOut] = field(default_factory=list)
     model_name: str | None = None
     searched: int = 0
+    orcid: dict = field(default_factory=dict)     # OpenAlex id -> scholarly.OrcidSuggestion (real ORCID data)
 
 
 def plan(ctx: ShortlistContext, found: list[scholarly.AuthorProfile], llm) -> Plan:
@@ -205,10 +206,10 @@ def plan(ctx: ShortlistContext, found: list[scholarly.AuthorProfile], llm) -> Pl
             try:
                 result = llm.with_structured_output(Ranking).invoke(messages)
             except Exception as e:
-                     out.flags.append(FlagOut(severity=FlagSeverity.INFO, code="llm_unavailable",
-                             message=f"The language model failed ({type(e).__name__}); the candidates "
-                                        "were not ranked by field alignment."))
-            break
+                out.flags.append(FlagOut(severity=FlagSeverity.INFO, code="llm_unavailable",
+                                         message=f"The language model failed ({type(e).__name__}); the candidates "
+                                                 "were not ranked by field alignment."))
+                break
             for r in result.items:
                 h = r.handle.strip().lower()
                 if h in handles:
@@ -246,6 +247,25 @@ def plan(ctx: ShortlistContext, found: list[scholarly.AuthorProfile], llm) -> Pl
     return out
 
 
+def orcid_lookup(p: Plan, get=scholarly.get_json) -> None:
+    """For every shortlisted candidate with an ORCID, read their current job title and public email from ORCID,
+    so the person verifying the list sees real ORCID data before the Chancellor chooses. Nothing is confirmed here."""
+    found = 0
+    for prof, *_ in p.ranked:
+        if not prof.orcid:
+            continue
+        try:
+            p.orcid[prof.external_id] = scholarly.orcid_suggestion(prof.orcid, get)
+            found += 1
+        except (scholarly.Unavailable, scholarly.NoAccess, scholarly.NotFound):
+            continue
+    if p.ranked:
+        p.flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="verify_referee_list",
+                               message=f"ORCID data found for {found} of {len(p.ranked)} candidate(s). Before the "
+                                       "Chancellor chooses, a person must verify each candidate's current rank and "
+                                       "email (for example on the university or LinkedIn page) and confirm them."))
+
+
 #--save
 def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentOutput]:
     # A re-run replaces the previous suggestions, but never a candidate the Chancellor already selected.
@@ -261,6 +281,10 @@ def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentO
         ref.university = (prof.institutions[0]["name"] if prof.institutions else None) or "Unknown"
         ref.country_code = (prof.country or "").upper()[:2]
         ref.h_index, ref.citation_count, ref.topics = prof.h_index, prof.citations, prof.topics
+        ref.orcid = prof.orcid or ref.orcid
+        sug = p.orcid.get(prof.external_id)
+        if sug and sug.email and not ref.email:
+            ref.email = sug.email          # still needs a person's check: no invitation until the rank is confirmed
         s.flush()
         cand = s.scalar(select(RefereeCandidate).where(RefereeCandidate.case_id == ctx.case_id,
                                                        RefereeCandidate.referee_id == ref.id))
@@ -273,6 +297,9 @@ def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentO
         cand.eligible = True
         s.flush()
         shortlist.append({"candidate_id": cand.id, "referee_id": ref.id, "coi_clear": True, "eligible": True,
+                          "orcid_title": sug.role_title if sug else None,
+                          "orcid_says_full_professor": sug.looks_full_professor if sug else None,
+                          "email_found": ref.email is not None,
                           "match_score": float(cand.match_score), "rank_confirmed": ref.rank is not None})
         items.append(ItemOut(entity_table="referee_candidate", entity_id=cand.id, counted=True,
                              classification=f"match {float(cand.match_score):.2f}", basis=basis,
@@ -305,6 +332,7 @@ def run(state: CaseState) -> dict:
     except llm_module.LLMNotConfigured:
         llm = None
     p = plan(ctx, found, llm)
+    orcid_lookup(p)
     p.flags = profile_flags + p.flags
     if search_error:
         p.flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="referee_search_failed",
