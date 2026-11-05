@@ -21,6 +21,7 @@ of a report text.
 """
 import argparse
 import smtplib
+import ssl
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -41,6 +42,7 @@ from promoflow.db.models import (
 )
 from promoflow.rules import referees as rules
 from promoflow.workflow import llm as llm_module
+from promoflow.workflow import scholarly
 from promoflow.workflow.nodes import use_stubs
 from promoflow.workflow.schemas import CaseState
 from promoflow.workflow.verify import handle, parse_handles
@@ -216,6 +218,18 @@ def confirm_referee(referee_id: int, *, email: str | None = None, rank: Rank | N
             ref.rank = rank
 
 
+def suggest_contact(referee_id: int, get=None) -> "scholarly.OrcidSuggestion | None":
+    """Rank and email suggested by ORCID, for the office to review before confirm_referee(). Never saves anything."""
+    with db_session.session_scope() as s:
+        orcid = s.get(Referee, referee_id).orcid
+    if not orcid:
+        return None
+    try:
+        return scholarly.orcid_suggestion(orcid, get or scholarly.get_json)
+    except (scholarly.NotFound, scholarly.NoAccess, scholarly.Unavailable):
+        return None
+
+
 def invite_pending(case_id: int, now: datetime | None = None) -> list[int]:
     """Invite selected referees of a case who were not ready before."""
     now, llm = now or _now(), _get_llm()
@@ -347,7 +361,7 @@ def _smtp_send(msg: OutreachMessage, to_address: str) -> None:
     email["From"], email["To"], email["Subject"] = config.OUTREACH_FROM, to_address, msg.subject
     email.set_content(msg.body)
     with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=30) as smtp:
-        smtp.starttls()
+        smtp.starttls(context=ssl.create_default_context())   # checks the mail server's certificate
         if config.SMTP_USER:
             smtp.login(config.SMTP_USER, config.SMTP_PASSWORD)
         smtp.send_message(email)
@@ -450,6 +464,8 @@ def main() -> None:
     sub.add_parser("send", help="send queued emails")
     p = sub.add_parser("invite-pending", help="invite selected referees whose email/rank are now confirmed")
     p.add_argument("case_id", type=int)
+    p = sub.add_parser("suggest", help="show the rank and email ORCID suggests for a referee")
+    p.add_argument("referee_id", type=int)
     p = sub.add_parser("confirm", help="enter a referee's email and/or confirm Full Professor rank")
     p.add_argument("referee_id", type=int)
     p.add_argument("--email")
@@ -462,6 +478,12 @@ def main() -> None:
         print(f"sent {send_queued()} message(s)")
     elif args.cmd == "invite-pending":
         print(f"invited assignments: {invite_pending(args.case_id)}")
+    elif args.cmd == "suggest":
+        sug = suggest_contact(args.referee_id)
+        if sug is None:
+            print("no ORCID suggestion available")
+        else:
+            print(f"title: {sug.role_title or '-'} | full professor? {sug.looks_full_professor} | email: {sug.email or '-'}")
     else:
         confirm_referee(args.referee_id, email=args.email, rank=Rank.PROFESSOR if args.professor else None)
         print("saved")
