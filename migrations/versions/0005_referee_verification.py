@@ -1,5 +1,5 @@
-"""Database update 0005: a referee is saved with the rank read from ORCID, and only Full Professors are kept in the tally.
-A human proxy must still verify the rank before the Chancellor picks the referee and the invitation is sent to ensure it is accurate and not outdated.
+"""Database update 0005: a referee is saved with the rank read from ORCID (Full or Associate Professor).
+A human proxy must still verify the rank before the Chancellor picks the referee and the invitation is sent, to make sure it is accurate and not outdated.
 
 Revision ID: 0005
 Revises: 0004
