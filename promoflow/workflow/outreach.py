@@ -146,8 +146,21 @@ def queue_message(s: Session, a: ReviewerAssignment, kind: MessageKind, now: dat
 
 # ---- 1. after the Chancellor's selection ----------------------------------------------------------------------------
 
-def ready(referee: Referee) -> list[str]:
-    """What is still missing before this referee may be contacted."""
+def allowed_ranks(track: str | None) -> set:
+    """Ranks a referee may hold: the same rank the applicant applies for, or higher.
+    Promotion to Associate: Associate or Full Professor. Promotion to Full: Full Professor only.
+    (Team decision; the handbook 7.8C asks for full professors.)"""
+    if track == "to_associate":
+        return {Rank.ASSOCIATE_PROFESSOR, Rank.PROFESSOR}
+    return {Rank.PROFESSOR}
+
+
+def _track(s: Session, case_id: int) -> str:
+    return s.get(PromotionCase, case_id).track.value
+
+
+def ready(referee: Referee, track: str | None = None) -> list[str]:
+    """What is still missing before this referee may be contacted. track = the applicant's promotion track."""
     missing = []
     if not referee.email:
         missing.append("email")
@@ -155,8 +168,9 @@ def ready(referee: Referee) -> list[str]:
         missing.append("rank")
     elif not referee.rank_verified:
         missing.append("rank verified by a person")
-    elif referee.rank != Rank.PROFESSOR:
-        missing.append("Full Professor rank (recorded rank is " + referee.rank.value.replace("_", " ") + ")")
+    elif referee.rank not in allowed_ranks(track):
+        missing.append("a rank equal to or higher than the applicant's target (recorded rank is "
+                       + referee.rank.value.replace("_", " ") + ")")
     return missing
 
 
@@ -166,7 +180,7 @@ def invite(s: Session, cand: RefereeCandidate, now: datetime, llm=None) -> Revie
     if existing is not None:
         return existing
     referee = s.get(Referee, cand.referee_id)
-    missing = ready(referee)
+    missing = ready(referee, _track(s, cand.case_id))
     if missing:
         _flag(s, cand.case_id, FlagSeverity.NEEDS_HUMAN, "referee_not_ready",
               f"Referee candidate #{cand.id} cannot be contacted yet: {', '.join(missing)} missing. Confirm it, then "
@@ -262,7 +276,7 @@ def _replacement(s: Session, case_id: int) -> RefereeCandidate | None:
         .order_by(RefereeCandidate.match_score.desc(), RefereeCandidate.id)))
     cands = [c for c in cands if c.referee_id not in contacted]
     for c in cands:
-        if not ready(s.get(Referee, c.referee_id)):    # nothing missing: can be contacted now
+        if not ready(s.get(Referee, c.referee_id), _track(s, case_id)):    # nothing missing: can be contacted now
             return c
     return cands[0] if cands else None                 # none ready: best match, and invite() will flag it
 
@@ -474,6 +488,7 @@ def main() -> None:
     p.add_argument("referee_id", type=int)
     p.add_argument("--email")
     p.add_argument("--professor", action="store_true", help="confirm the referee is a Full Professor")
+    p.add_argument("--associate", action="store_true", help="confirm the referee is an Associate Professor")
     args = parser.parse_args()
     if args.cmd == "tick":
         r = tick()
@@ -489,7 +504,8 @@ def main() -> None:
         else:
             print(f"title: {sug.role_title or '-'} | full professor? {sug.looks_full_professor} | email: {sug.email or '-'}")
     else:
-        confirm_referee(args.referee_id, email=args.email, rank=Rank.PROFESSOR if args.professor else None)
+        confirm_referee(args.referee_id, email=args.email,
+                        rank=Rank.PROFESSOR if args.professor else Rank.ASSOCIATE_PROFESSOR if args.associate else None)
         print("saved")
 
 
