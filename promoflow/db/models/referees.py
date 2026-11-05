@@ -43,7 +43,8 @@ class Referee(IdMixin, TimestampMixin, Base):
     email: Mapped[str | None] = mapped_column(String(254), unique=True)
     university: Mapped[str] = mapped_column(String(300))
     country_code: Mapped[str] = mapped_column(String(2))  # must be outside the UAE (rule)
-    rank: Mapped[Rank] = mapped_column(pg_enum(Rank))  # must be Professor (rule)
+    rank: Mapped[Rank | None] = mapped_column(pg_enum(Rank), nullable=True)  # confirmed by the office; must be Professor
+    orcid: Mapped[str | None] = mapped_column(String(19))   # from OpenAlex; used to suggest rank and email
     scopus_author_id: Mapped[str | None] = mapped_column(String(40))
     openalex_author_id: Mapped[str | None] = mapped_column(String(40), unique=True)
     h_index: Mapped[int | None] = mapped_column(Integer)
