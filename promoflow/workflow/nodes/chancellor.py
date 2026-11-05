@@ -299,8 +299,12 @@ def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentO
         sug = p.orcid.get(prof.external_id)
         if sug and not ref.email:
             ref.email = sug.email          # from ORCID; every kept candidate has one
-        if sug and sug.looks_full_professor and not ref.rank_verified:
-            ref.rank = Rank.PROFESSOR      # from ORCID's job title; a person still verifies it
+        if sug and not ref.rank_verified:  # rank from ORCID's job title; a person still verifies it
+            title = (sug.role_title or "").lower()
+            if sug.looks_full_professor:
+                ref.rank = Rank.PROFESSOR
+            elif "associate professor" in title:
+                ref.rank = Rank.ASSOCIATE_PROFESSOR
         s.flush()
         cand = s.scalar(select(RefereeCandidate).where(RefereeCandidate.case_id == ctx.case_id,
                                                        RefereeCandidate.referee_id == ref.id))
