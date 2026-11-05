@@ -15,10 +15,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Until now every referee had to have a rank before we could save them. The rank now comes from ORCID
-    # and a person verifies it, so the column must be allowed to be empty while that happens.
-    op.alter_column("referee", "rank", nullable=True)
-
+ 
     # A place to keep the referee's ORCID ID (for example 0000-0002-1825-0097), so we can read their
     # job title and email from ORCID.
     op.add_column("referee", sa.Column("orcid", sa.String(19), nullable=True))
@@ -29,7 +26,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Undo the three changes above, in reverse order. Only used if we ever need to go back.
     op.drop_column("referee", "rank_verified")
     op.drop_column("referee", "orcid")
-    op.alter_column("referee", "rank", nullable=False)
+    rank: Mapped[Rank] = mapped_column(pg_enum(Rank))  # from ORCID: Associate or Full Professor; never empty
