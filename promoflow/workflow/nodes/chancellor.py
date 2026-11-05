@@ -247,11 +247,21 @@ def plan(ctx: ShortlistContext, found: list[scholarly.AuthorProfile], llm) -> Pl
     return out
 
 
+def orcid_rank(sug) -> Rank | None:
+    """The rank read from the ORCID job title: Full or Associate Professor, otherwise None."""
+    if sug.looks_full_professor:
+        return Rank.PROFESSOR
+    if "associate professor" in (sug.role_title or "").lower():
+        return Rank.ASSOCIATE_PROFESSOR
+    return None
+
+
 def orcid_lookup(p: Plan, min_reports: int, get=scholarly.get_json) -> None:
     """Runs BEFORE the Chancellor chooses. Reads each shortlisted candidate's real ORCID record:
     - no public email in ORCID (or no ORCID at all): the candidate is unreachable and is dropped from the list;
-    - otherwise the current job title from ORCID is kept as a hint, for a person to verify it is up to date."""
-    kept, dropped = [], 0
+    - current job title is not Associate or Full Professor (or there is none): dropped, no referee without a rank;
+    - otherwise the candidate is kept, and a person checks the rank is not outdated before the Chancellor picks."""
+    kept, dropped, no_rank = [], 0, 0
     for row in p.ranked:
         prof = row[0]
         sug = None
@@ -263,12 +273,19 @@ def orcid_lookup(p: Plan, min_reports: int, get=scholarly.get_json) -> None:
         if sug is None or not sug.email:
             dropped += 1                       # unreachable: no email we can use
             continue
+        if orcid_rank(sug) is None:
+            no_rank += 1                       # not Associate or Full Professor in ORCID
+            continue
         p.orcid[prof.external_id] = sug
         kept.append(row)
     p.ranked = kept
     if dropped:
         p.flags.append(FlagOut(severity=FlagSeverity.INFO, code="unreachable_dropped",
                                message=f"{dropped} candidate(s) had no public email in ORCID and were dropped."))
+    if no_rank:
+        p.flags.append(FlagOut(severity=FlagSeverity.INFO, code="no_rank_dropped",
+                               message=f"{no_rank} candidate(s) were not Associate or Full Professor in ORCID "
+                                       "and were dropped."))
     if len(kept) < min_reports:
         p.flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="too_few_reachable",
                                message=f"Only {len(kept)} reachable candidate(s); at least {min_reports} referee "
@@ -287,24 +304,20 @@ def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentO
                                              RefereeCandidate.selected_by_chancellor.is_(False)))
     shortlist, items = [], []
     for prof, score, rationale, basis in p.ranked:
+        sug = p.orcid.get(prof.external_id)    # every kept candidate has an ORCID email and rank
         ref = s.scalar(select(Referee).where(Referee.openalex_author_id == prof.external_id))
         if ref is None:
-            ref = Referee(openalex_author_id=prof.external_id, rank=None)
+            ref = Referee(openalex_author_id=prof.external_id, rank=orcid_rank(sug))   # saved with its rank
             s.add(ref)
         ref.full_name = prof.name or prof.external_id
         ref.university = (prof.institutions[0]["name"] if prof.institutions else None) or "Unknown"
         ref.country_code = (prof.country or "").upper()[:2]
         ref.h_index, ref.citation_count, ref.topics = prof.h_index, prof.citations, prof.topics
         ref.orcid = prof.orcid or ref.orcid
-        sug = p.orcid.get(prof.external_id)
-        if sug and not ref.email:
-            ref.email = sug.email          # from ORCID; every kept candidate has one
-        if sug and not ref.rank_verified:  # rank from ORCID's job title; a person still verifies it
-            title = (sug.role_title or "").lower()
-            if sug.looks_full_professor:
-                ref.rank = Rank.PROFESSOR
-            elif "associate professor" in title:
-                ref.rank = Rank.ASSOCIATE_PROFESSOR
+        if not ref.email:
+            ref.email = sug.email          # from ORCID
+        if not ref.rank_verified:          # refresh from ORCID until a person has verified it
+            ref.rank = orcid_rank(sug)
         s.flush()
         cand = s.scalar(select(RefereeCandidate).where(RefereeCandidate.case_id == ctx.case_id,
                                                        RefereeCandidate.referee_id == ref.id))
@@ -317,8 +330,8 @@ def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentO
         cand.eligible = True
         s.flush()
         shortlist.append({"candidate_id": cand.id, "referee_id": ref.id, "coi_clear": True, "eligible": True,
-                          "orcid_title": sug.role_title if sug else None,
-                          "orcid_says_full_professor": sug.looks_full_professor if sug else None,
+                          "orcid_title": sug.role_title,
+                          "orcid_says_full_professor": sug.looks_full_professor,
                           "email_found": ref.email is not None,
                           "match_score": float(cand.match_score), "rank": ref.rank.value if ref.rank else None,
                           "rank_verified": ref.rank_verified})
