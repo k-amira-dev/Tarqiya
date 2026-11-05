@@ -67,6 +67,7 @@ class AuthorProfile:
     topics: list[str] = field(default_factory=list)
     institutions: list[dict] = field(default_factory=list)   # [{"id", "name", "country"}], most recent first
     coauthors: list[str] = field(default_factory=list)       # OpenAlex ids of recent co-authors (filled on request)
+    orcid: str | None = None                                 # e.g. "0000-0002-1825-0097", when OpenAlex has it
 
     @property
     def country(self) -> str | None:
@@ -104,7 +105,7 @@ def _profile_from_openalex(a: dict) -> AuthorProfile:
         source="openalex", external_id=_short_id(a.get("id")), name=a.get("display_name"),
         h_index=stats.get("h_index"), citations=a.get("cited_by_count"), works=a.get("works_count"),
         topics=[t.get("display_name") for t in (a.get("topics") or [])[:15] if t.get("display_name")],
-        institutions=insts)
+        institutions=insts, orcid=_short_id(a.get("orcid")))
 
 
 def openalex_author(ref: str, get: Callable = get_json) -> AuthorProfile:
@@ -158,3 +159,36 @@ def openalex_candidate_ids(search: str, since_year: int, exclude: set[str], limi
                 counts[aid] += 1
     return [aid for aid, _ in counts.most_common(limit)]
 
+
+
+# ---- ORCID (public API, no key needed) -----------------------------------------------------------------------
+
+ORCID_API = "https://pub.orcid.org/v3.0"
+_NOT_FULL = ("associate", "assistant", "adjunct", "visiting", "research professor", "emerit")
+
+
+@dataclass
+class OrcidSuggestion:
+    """What ORCID suggests about a referee. A SUGGESTION only: the Chancellor's office confirms it."""
+    email: str | None = None
+    role_title: str | None = None        # current job title as written in ORCID, e.g. "Professor"
+    looks_full_professor: bool = False
+
+
+def orcid_suggestion(orcid: str, get: Callable = get_json) -> OrcidSuggestion:
+    """Current job title and public email from ORCID. Most researchers keep their email private, so it is often
+    missing; the job title is typed by the researcher and may be out of date."""
+    out = OrcidSuggestion()
+    headers = {"Accept": "application/json"}
+    emails = get(f"{ORCID_API}/{orcid}/email", headers).get("email") or []
+    if emails:
+        out.email = emails[0].get("email")
+    for group in get(f"{ORCID_API}/{orcid}/employments", headers).get("affiliation-group") or []:
+        for summary in group.get("summaries") or []:
+            job = summary.get("employment-summary") or {}
+            if job.get("end-date") is None and job.get("role-title"):     # a current job
+                out.role_title = job["role-title"]
+                title = out.role_title.lower()
+                out.looks_full_professor = "professor" in title and not any(w in title for w in _NOT_FULL)
+                return out
+    return out
