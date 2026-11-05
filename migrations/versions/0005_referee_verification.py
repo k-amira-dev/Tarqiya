@@ -29,4 +29,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_column("referee", "rank_verified")
     op.drop_column("referee", "orcid")
-    rank: Mapped[Rank] = mapped_column(pg_enum(Rank))  # from ORCID: Associate or Full Professor; never empty
