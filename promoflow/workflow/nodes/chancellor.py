@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from promoflow import config
 from promoflow.db import session as db_session
-from promoflow.db.enums import Component, Confidence, DecisionBasis, FlagSeverity, Verdict
+from promoflow.db.enums import Component, Confidence, DecisionBasis, FlagSeverity, Rank, Verdict
 from promoflow.db.models import (
     PromotionCase, PromotionCriteria, Publication, PublicationAuthor, Referee, RefereeCandidate,
     ReviewerAssignment, ScopusEvidence,
@@ -299,6 +299,8 @@ def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentO
         sug = p.orcid.get(prof.external_id)
         if sug and not ref.email:
             ref.email = sug.email          # from ORCID; every kept candidate has one
+        if sug and sug.looks_full_professor and not ref.rank_verified:
+            ref.rank = Rank.PROFESSOR      # from ORCID's job title; a person still verifies it
         s.flush()
         cand = s.scalar(select(RefereeCandidate).where(RefereeCandidate.case_id == ctx.case_id,
                                                        RefereeCandidate.referee_id == ref.id))
@@ -314,7 +316,8 @@ def save(s: Session, ctx: ShortlistContext, p: Plan) -> tuple[list[dict], AgentO
                           "orcid_title": sug.role_title if sug else None,
                           "orcid_says_full_professor": sug.looks_full_professor if sug else None,
                           "email_found": ref.email is not None,
-                          "match_score": float(cand.match_score), "rank_confirmed": ref.rank is not None})
+                          "match_score": float(cand.match_score), "rank": ref.rank.value if ref.rank else None,
+                          "rank_verified": ref.rank_verified})
         items.append(ItemOut(entity_table="referee_candidate", entity_id=cand.id, counted=True,
                              classification=f"match {float(cand.match_score):.2f}", basis=basis,
                              confidence=Confidence.MEDIUM, reason=rationale))
