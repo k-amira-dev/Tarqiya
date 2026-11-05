@@ -43,7 +43,7 @@ class Referee(IdMixin, TimestampMixin, Base):
     email: Mapped[str | None] = mapped_column(String(254), unique=True)
     university: Mapped[str] = mapped_column(String(300))
     country_code: Mapped[str] = mapped_column(String(2))  # must be outside the UAE (rule)
-    rank: Mapped[Rank | None] = mapped_column(pg_enum(Rank), nullable=True)  # confirmed by the office; must be Professor
+    rank: Mapped[Rank] = mapped_column(pg_enum(Rank))  # from ORCID: Associate or Full Professor; never empty
     orcid: Mapped[str | None] = mapped_column(String(19))   # from OpenAlex; used to read rank and email from ORCID
     rank_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # a person checked it
     scopus_author_id: Mapped[str | None] = mapped_column(String(40))
