@@ -5,7 +5,7 @@ from promoflow.db.enums import RoleName
 from promoflow.ui import theme
 from promoflow.ui.auth import ROLE_LABELS, CurrentUser, logout
 from promoflow.ui.views import (
-    about, dashboard, reviews, section0, section1, section2, section3, section4, section5, section6, section7, section8,
+    about, dashboard, referees, reviews, section0, section1, section2, section3, section4, section5, section6, section7, section8,
     section9, section10, section11,
 )
 
@@ -27,8 +27,8 @@ SECTIONS = [
 
 
 def pages_for(user: CurrentUser) -> dict[str, st.Page]:
-    # "How PromoFlow works" is the first page everyone lands on; the dashboard is one click away.
-    pages = {"about": st.Page(about.render, title="How PromoFlow works", icon=":material/lightbulb:",
+    # "How Tarqiya works" is the first page everyone lands on; the dashboard is one click away.
+    pages = {"about": st.Page(about.render, title="How Tarqiya works", icon=":material/lightbulb:",
                               url_path="about", default=True),
              "home": st.Page(dashboard.render, title="Dashboard", icon=":material/space_dashboard:", url_path="home")}
     if user.has(RoleName.APPLICANT):
@@ -36,14 +36,17 @@ def pages_for(user: CurrentUser) -> dict[str, st.Page]:
             pages[f"section{code}"] = st.Page(render, title=title, icon=icon, url_path=url_path)
     if user.has(RoleName.HOD, RoleName.DEAN):
         pages["reviews"] = st.Page(reviews.render, title="Reviews", icon=":material/fact_check:", url_path="reviews")
+    if user.has(RoleName.CHANCELLOR):
+        pages["referees"] = st.Page(referees.render, title="Referee selection", icon=":material/how_to_reg:", url_path="referees")
     return pages
 
 
 def sidebar(user: CurrentUser, pages: dict[str, st.Page]) -> None:
     with st.sidebar:
-        theme.html(f'<div class="pf-brand">{theme.logo(34)}<div><b>PromoFlow</b>'
+        theme.html(f'<div class="pf-uos" style="display:flex;justify-content:center;width:100%;margin:4px 0 14px">{theme.uos_logo(80, light=True)}</div>')   # inline, so it does not depend on the stylesheet being reloaded
+        theme.html(f'<div class="pf-brand">{theme.logo(34)}<div><b>Tarqiya</b>'
                    '<small>FACULTY PROMOTION REVIEW</small></div></div>')
-        st.page_link(pages["about"], label="How PromoFlow works", icon=":material/lightbulb:")
+        st.page_link(pages["about"], label="How Tarqiya works", icon=":material/lightbulb:")
         st.page_link(pages["home"], label="Dashboard", icon=":material/space_dashboard:")
 
         if user.has(RoleName.APPLICANT):
@@ -54,8 +57,8 @@ def sidebar(user: CurrentUser, pages: dict[str, st.Page]) -> None:
             theme.html('<div class="pf-navlabel">Reviews</div>')
             if "reviews" in pages:
                 st.page_link(pages["reviews"], label="Awaiting my decision", icon=":material/fact_check:")
-            else:   # the Chancellor's referee-selection page is still to come
-                theme.html('<div class="pf-soon"><span>Referee selection</span><em>soon</em></div>')
+            if "referees" in pages:
+                st.page_link(pages["referees"], label="Referee selection", icon=":material/how_to_reg:")
         if user.has(RoleName.ADMIN):
             theme.html('<div class="pf-navlabel">Admin</div>'
                        '<div class="pf-soon"><span>Criteria & journal rankings</span><em>soon</em></div>'

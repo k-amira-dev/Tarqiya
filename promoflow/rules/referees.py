@@ -1,7 +1,7 @@
 """Deterministic referee rules (no LLM), used by the Chancellor's Office Agent and the Reviewer Outreach worker.
 
 - conflict of interest: co-authorship, shared institution, used on any case in the last 5 years;
-- eligibility: outside the UAE, citations / h-index comparable to or higher than the applicant's, no conflict;
+- eligibility: outside the UAE, h-index higher than the h-index the applicant entered, no conflict;
 - outreach timing: a reminder every 2 weeks, a replacement after 3 months without a report (spec);
 - returned reports: per-referee average grade, the minimum number of reports, and the pass mark
   (PromotionCriteria.min_referee_average_pct: 75% for Associate, 80% for Full).
@@ -20,7 +20,6 @@ MAX_SHORTLIST = 10                          #max candidates in the shortlist
 REUSE_YEARS = 5
 REMINDER_EVERY = timedelta(days=14)          # flowchart: "2 weeks no response, send a reminder"
 NO_RESPONSE_LIMIT = timedelta(days=90)       # spec: 3 months without a report -> replacement referee
-METRIC_RATIO = 0.9                           # "comparable": at least 90% of the applicant's (ASSUMPTION outreach-v1)
 UAE = "AE"
 
 
@@ -101,10 +100,9 @@ def eligibility(c: Candidate, a: ApplicantSide, conflict: Conflict) -> tuple[boo
         reasons.append("country unknown (must be outside the UAE)")
     elif c.country.upper() == UAE:
         reasons.append("based in the UAE")
-    if a.h_index is not None and (c.h_index is None or c.h_index < METRIC_RATIO * a.h_index):
-        reasons.append(f"h-index {c.h_index} is below the applicant's {a.h_index}")
-    if a.citations is not None and (c.citations is None or c.citations < METRIC_RATIO * a.citations):
-        reasons.append(f"{c.citations} citations is below the applicant's {a.citations}")
+    # Only the h-index counts (not citations): the referee's, from OpenAlex, must be HIGHER than the one the applicant entered.
+    if a.h_index is not None and (c.h_index is None or c.h_index <= a.h_index):
+        reasons.append(f"h-index {c.h_index} is not higher than the applicant's {a.h_index}")
     return not reasons, reasons
     #if conflict.same_school:
             #reasons.append("studied or worked at a university where the applicant studied")#

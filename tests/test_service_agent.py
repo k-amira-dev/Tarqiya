@@ -83,7 +83,7 @@ def test_every_item_is_scored_and_the_total_is_capped_at_ten(app_env):
     assert points(out) == {1: 6, 2: 2, 3: 2, 4: 2, 5: 2} and len(llm.calls) == 1
     assert next(c for c in out.criteria if c.key == "service_total").actual == 10        # 14 capped at 10
     assert out.verdict == Verdict.PASS and "total_capped" in {f.code for f in out.flags}
-    assert not out.is_stub and out.prompt_version == "service-v1"
+    assert not out.is_stub and out.prompt_version == "service-v2"
 
 
 def test_item_one_collects_committees_administrative_positions_and_policy_work(app_env):

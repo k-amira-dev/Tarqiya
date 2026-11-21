@@ -28,7 +28,7 @@ def render() -> None:
 
     editable = ctx.status in EDITABLE
     if editable:
-        entries_ui.panel("letter", "s8_flash")
+        entries_ui.add_bar(["letter"], "s8_flash", K + "editing")
     if flash := st.session_state.pop("s8_flash", None):
         st.success(flash, icon=":material/check_circle:")
     if not editable:
@@ -42,9 +42,6 @@ def render() -> None:
     if editable:
         if editing == "new":
             _form()
-        elif st.button("+ Add a recommendation letter", key="s8_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s8.RecommendationLetterRow, relationships: dict, editable: bool) -> None:

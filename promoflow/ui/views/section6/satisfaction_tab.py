@@ -3,14 +3,15 @@ import hashlib
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.models import CourseTaught
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import satisfaction as s6c
-from promoflow.extraction.pdf_text import extract_text
+from promoflow.extraction.local_read import local_text
 from promoflow.extraction.student_evaluation import extract_student_evaluation, match_course
 from promoflow.ui import theme
 from promoflow.ui.views.section6 import imports_ui
-from promoflow.workflow import llm as llm_module
 
 K = "s6c_"
 
@@ -18,7 +19,8 @@ K = "s6c_"
 def render(rows: list[s6c.SatisfactionRow], courses: list[CourseTaught], course_options: dict[int, str],
           editable: bool) -> None:
     if editable:
-        imports_ui.evaluations(courses)
+        entries_ui.add_bar([], "", K + "editing", auto=lambda: imports_ui.evaluations(courses), blocked=not course_options,
+                           blocked_why="Add a course in 6A first.")
     coverage = s6c.coverage(rows, courses)
     if courses:
         theme.html(f'<div class="pf-note">Coverage: {coverage:.0%} of course-semesters have a satisfaction '
@@ -34,9 +36,6 @@ def render(rows: list[s6c.SatisfactionRow], courses: list[CourseTaught], course_
             _form(editable, course_options, courses, None)
         elif not course_options:
             st.info("Add a course in 6A first.", icon=":material/info:")
-        elif st.button("+ Add a satisfaction report", key="s6c_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s6c.SatisfactionRow, course_options: dict[int, str], editable: bool) -> None:
@@ -129,15 +128,12 @@ def _autofill(prefix: str, upload, courses: list[CourseTaught], course_ids: list
     digest = hashlib.sha1(data).hexdigest()
     if st.session_state.get(prefix + "digest") != digest:
         with st.spinner("Reading the document…"):
-            text = extract_text(data)
-            if not text.ok:
-                result = {"message": text.message, "fields": None, "warnings": []}
+            text, _source = local_text(data)
+            if not text:
+                result = {"message": "This file could not be read (it may be blank, damaged or password-protected). Please fill in the boxes yourself.",
+                          "fields": None, "warnings": []}
             else:
-                try:
-                    llm = llm_module.get_llm()
-                except llm_module.LLMNotConfigured:
-                    llm = None
-                fields = extract_student_evaluation(text.text, llm)
+                fields = extract_student_evaluation(text)
                 course_id = match_course(fields, courses)
                 if course_id in course_ids:
                     st.session_state[prefix + "course"] = course_id

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from promoflow.db.enums import DocumentKind
 from promoflow.db.models import CaseDocument, Journal, JournalRanking, Publication
 from promoflow.dossier import documents
-from promoflow.dossier.section5.papers import PublicationRow, load as load_papers
+from promoflow.dossier.section5.papers import DECLARED, PublicationRow, load as load_papers
 
 # Name of the file slot that holds the signed Journals Classification Form.
 FORM_SLOT = "signed_classification"
@@ -57,7 +57,6 @@ def save_signed_form(s: Session, case_id: int, user_id: int, upload: tuple[str, 
 # rows are read and every journal of the applicant's papers that is NOT in the table yet is added to it from the form, so the papers are
 # counted. These rows are DECLARED by the applicant (marked in `scopus_source_id`) until an admin imports the official rankings, which
 # then take over because a journal that already exists is never changed.
-DECLARED = "DECLARED-IN-FORM"
 
 
 class FormJournal(BaseModel):

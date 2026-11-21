@@ -15,7 +15,7 @@ K = "s7a2_"
 
 def render(rows: list[s7a2.AdminPositionRow], editable: bool) -> None:
     if editable:
-        entries_ui.panel("admin", "s7_flash")
+        entries_ui.add_bar(["admin"], "s7_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.position.id:
@@ -25,9 +25,6 @@ def render(rows: list[s7a2.AdminPositionRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add an administrative position", key="s7a2_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s7a2.AdminPositionRow, editable: bool) -> None:

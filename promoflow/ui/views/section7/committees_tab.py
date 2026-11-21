@@ -17,7 +17,7 @@ LEVEL_LABEL = {OrgLevel.DEPARTMENT: "Department", OrgLevel.COLLEGE: "College", O
 
 def render(rows: list[s7a1.CommitteeRow], editable: bool) -> None:
     if editable:
-        entries_ui.panel("committee", "s7_flash")
+        entries_ui.add_bar(["committee"], "s7_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.membership.id:
@@ -27,9 +27,6 @@ def render(rows: list[s7a1.CommitteeRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a committee membership", key="s7a1_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s7a1.CommitteeRow, editable: bool) -> None:

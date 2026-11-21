@@ -37,11 +37,11 @@ def test_wrong_password_shows_error(app_env):
 
 def test_login_profile_dashboard_logout(app_env):
     at = app().run()
-    assert "Welcome to PromoFlow" in page_text(at)
+    assert "Welcome to Tarqiya" in page_text(at)
     at = login(at, "applicant@promoflow.test")
     assert "Complete your profile" in page_text(at)
     at = complete_profile(at, "E-1001")
-    assert "How PromoFlow works" in page_text(at)          # the first page is the overview, for anyone new
+    assert "How Tarqiya works" in page_text(at)          # the first page is the overview, for anyone new
     assert "The promotion in six steps" in page_text(at)
     [b for b in at.button if "dashboard" in b.label.lower()][0].click()
     at = at.run()
@@ -49,7 +49,7 @@ def test_login_profile_dashboard_logout(app_env):
     assert "Your application" in page_text(at)
     at.sidebar.button(key="logout").click()
     at = at.run()
-    assert "Welcome to PromoFlow" in page_text(at)
+    assert "Welcome to Tarqiya" in page_text(at)
 
 
 def test_hod_sees_both_zones(app_env):
@@ -101,3 +101,9 @@ def test_section0_validation_and_save(app_env):
     with app_env.session_scope() as s:
         case = s.scalar(select(PromotionCase))
         assert case.status == CaseStatus.DRAFT and case.specialization == "Computer Science"
+
+
+def test_the_sidebar_shows_the_university_logo_and_the_product_name(app_env):
+    at = complete_profile(login(app().run(), "hod.cs@promoflow.test"), "E-2001")
+    sidebar = " ".join(m.value for m in at.sidebar.markdown)
+    assert 'alt="University of Sharjah"' in sidebar and "Tarqiya" in sidebar and "PromoFlow" not in sidebar

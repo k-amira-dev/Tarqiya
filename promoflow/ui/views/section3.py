@@ -34,8 +34,7 @@ def render() -> None:
 
     editable = ctx.status in EDITABLE
     if editable:
-        entries_ui.panel("degree", "s3_flash")
-        entries_ui.panel("equivalency", "s3_flash")
+        entries_ui.add_bar(["degree", "equivalency"], "s3_flash", K + "editing")
     if flash := st.session_state.pop(K + "flash", None):
         st.success(flash, icon=":material/check_circle:")
     if not editable:
@@ -53,10 +52,6 @@ def render() -> None:
     if editable:
         if editing == "new":
             _entry_form(ctx.case_id, today, editable, None)
-        else:
-            if st.button("+ Add a degree", key="s3_add", use_container_width=False):
-                st.session_state[K + "editing"] = "new"
-                st.rerun()
 
 
 def _entry_summary(row: s3.DegreeRow, editable: bool) -> None:

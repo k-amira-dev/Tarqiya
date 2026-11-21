@@ -1,5 +1,5 @@
 """Evidence documents -> entries: the page-picture reader, the rules that turn what was read into entry values, and saving.
-Fake models stand in for Groq, so nothing here costs money or needs a key."""
+No model is involved in reading a document."""
 import io
 from datetime import date
 from pathlib import Path
@@ -12,25 +12,11 @@ from sqlalchemy import select
 from promoflow.db.models import CommitteeMembership, Supervision, User, WorkshopDelivered
 from promoflow.dossier import doc_entries
 from promoflow.dossier import section0 as s0
-from promoflow.extraction import doc_llm, entry_docs as E, picture_doc
+from promoflow.extraction import entry_docs as E
 from tests.test_eligibility_checker import ON, S0_VALUES
-from tests.test_extraction_teaching_docs import FakeLLM
 
 FIXTURES = Path(__file__).parent / "fixtures" / "extraction"
 CTX = E.Ctx(applicant_name="Dr. Samira Al-Tamimi")
-
-
-class FakeVision:
-    """Looks like the vision model: .invoke(messages) -> a reply with .content and .usage_metadata."""
-    def __init__(self, *replies):
-        self.replies, self.calls = list(replies), 0
-
-    def invoke(self, messages):
-        self.calls += 1
-        r = self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
-        if isinstance(r, Exception):
-            raise r
-        return SimpleNamespace(content=r, usage_metadata={"input_tokens": 2000, "output_tokens": 80})
 
 
 def blank_pdf() -> bytes:
@@ -49,49 +35,6 @@ def blank_pdf() -> bytes:
     ("April 2022", date(2022, 4, 1)), ("", None), (None, None), ("sometime", None)])
 def test_dates_in_many_written_forms(text, expected):
     assert E.parse_date(text) == expected
-
-
-# ---- the page-picture reader -----------------------------------------------------------------------------------------
-
-JSON = '{"title": "Active learning", "organiser": "Teaching Centre", "activity_date": "2019-10-23", "hours": 6, "event_type": "workshop"}'
-
-
-def test_page_images_are_made_from_a_pdf():
-    images = picture_doc.page_images(blank_pdf())
-    assert len(images) == 1 and images[0][:2] == b"\xff\xd8"                 # a JPEG
-
-
-def test_the_picture_reader_parses_an_answer_wrapped_in_code_fences():
-    parsed, usage = picture_doc.read_picture([b"x"], E.AttendanceCert, FakeVision("Here is the result:\n```json\n" + JSON + "\n```"))
-    assert (parsed.title, parsed.hours) == ("Active learning", 6) and usage.input_tokens == 2000
-
-
-def test_the_picture_reader_retries_then_gives_a_plain_error(monkeypatch):
-    monkeypatch.setattr(picture_doc.time, "sleep", lambda s: None)
-    parsed, _ = picture_doc.read_picture([b"x"], E.AttendanceCert, FakeVision("not json at all", JSON))
-    assert parsed.title == "Active learning"
-    with pytest.raises(doc_llm.ReadFailed, match="expected form"):
-        picture_doc.read_picture([b"x"], E.AttendanceCert, FakeVision("nothing useful"))
-
-
-def test_a_used_up_daily_allowance_fails_at_once_and_says_why(monkeypatch):
-    slept = []
-    monkeypatch.setattr(picture_doc.time, "sleep", lambda s: slept.append(s))
-    vision = FakeVision(RuntimeError("RateLimitError 429 ... tokens per day (TPD): Limit 200000 ... try again in 13m52s"))
-    with pytest.raises(doc_llm.ReadFailed, match="daily reading allowance"):
-        picture_doc.read_picture([b"x"], E.AttendanceCert, vision)
-    assert vision.calls == 1 and slept == []                                    # no pointless waiting
-
-
-def test_a_file_with_text_is_read_as_text_and_a_scan_as_a_picture():
-    answer = E.AttendanceCert(title="T", organiser="O", activity_date="2020-01-02", hours=3, event_type=None)
-    text_pdf = (FIXTURES / "student_evaluation_b.pdf").read_bytes()
-    parsed, _, route = picture_doc.read_entry_file(text_pdf, E.AttendanceCert, FakeLLM(answer), FakeVision(JSON))
-    assert route == "text" and parsed is answer
-    parsed, _, route = picture_doc.read_entry_file(blank_pdf(), E.AttendanceCert, FakeLLM(answer), FakeVision(JSON))
-    assert route == "picture" and parsed.title == "Active learning"
-    with pytest.raises(doc_llm.ReadFailed, match="scan"):
-        picture_doc.read_entry_file(blank_pdf(), E.AttendanceCert, FakeLLM(answer), None)
 
 
 # ---- what each kind of document becomes ------------------------------------------------------------------------------
@@ -159,7 +102,7 @@ def make_case(app_env) -> int:
 
 
 def draft(kind, values, name="evidence.pdf", issues=None):
-    return E.EntryDraft(kind, name, b"%PDF-1.4 test", values, issues or [], "picture")
+    return E.EntryDraft(kind, name, b"%PDF-1.4 test", values, issues or [], "ocr")
 
 
 def test_saving_committees_with_evidence_and_no_duplicates(app_env):

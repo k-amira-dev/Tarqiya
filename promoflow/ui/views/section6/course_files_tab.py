@@ -13,7 +13,7 @@ K = "s6f_"
 
 def render(rows: list[s6f.CourseFileRow], course_options: dict[int, str], editable: bool) -> None:
     if editable:
-        entries_ui.panel("course_file", "s6_flash")
+        entries_ui.add_bar(["course_file"], "s6_flash", K + "editing", blocked=not course_options, blocked_why="Add a course in 6A first.")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.course_file.id:
@@ -25,9 +25,6 @@ def render(rows: list[s6f.CourseFileRow], course_options: dict[int, str], editab
             _form(editable, course_options, None)
         elif not course_options:
             st.info("Add a course in 6A first.", icon=":material/info:")
-        elif st.button("+ Add a course file", key="s6f_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s6f.CourseFileRow, course_options: dict[int, str], editable: bool) -> None:

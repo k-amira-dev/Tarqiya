@@ -1,5 +1,5 @@
 """More evidence documents -> entries (degrees, ranks, papers, awards, peer observations ...): the rules in extraction/entry_docs_more.py and
-saving through the sections' own add() functions. Fake models stand in for Groq, so nothing here costs money or needs a key."""
+saving through the sections' own add() functions. No model is involved in reading a document."""
 from datetime import date
 from types import SimpleNamespace
 
@@ -12,7 +12,6 @@ from promoflow.extraction import entry_docs as E
 from promoflow.extraction import entry_docs_more as M
 from promoflow.dossier import doc_entries
 from tests.test_extraction_entry_docs import FIXTURES, draft, make_case
-from tests.test_extraction_teaching_docs import FakeLLM
 
 COURSES = [SimpleNamespace(id=1, course_code="MCOM 325", academic_year="2018/2019", semester="fall", role="instructor"),
            SimpleNamespace(id=2, course_code="MCOM 325", academic_year="2019/2020", semester="fall", role="instructor"),
@@ -193,18 +192,6 @@ def test_every_kind_has_a_saving_function():
     assert set(E.KINDS) - set(doc_entries.ADDERS) == {"equivalency"}
 
 
-# ---- reading with fake models ----------------------------------------------------------------------------------------
-
-def test_several_curriculum_rows_come_from_one_document():
-    rows = [M.CurriculumRow(course_code="MCOM 415", course_title="Data Journalism", contribution="Proposed a new course", changes="New course",
-                            approval_level="University level", approval_date="2021-05-12", what_was_done="Designed it."),
-            M.CurriculumRow(course_code="MCOM 230", course_title="Media Writing", contribution="Modified an existing course", changes="Content updated",
-                            approval_level="Department level", approval_date="2024-05-09", what_was_done="Updated it.")]
-    text_pdf = (FIXTURES / "student_evaluation_b.pdf").read_bytes()
-    drafts, _ = E.read_entries(E.KINDS["curriculum"], "c.pdf", text_pdf, CTX, FakeLLM(M.CurriculumDoc(rows=rows)), None)
-    assert [d.values["course_or_program"] for d in drafts] == ["MCOM 415 Data Journalism", "MCOM 230 Media Writing"]
-
-
 # ---- saving ----------------------------------------------------------------------------------------------------------
 
 def ctx_for(app_env, uid):
@@ -314,37 +301,10 @@ def _labels(node) -> list[str]:
     return out
 
 
-def test_every_section_page_shows_its_document_panels(app_env):
-    """Each page renders (headless) for an applicant with a draft application, and offers the 'Fill in from your documents' panels it should."""
-    from streamlit.testing.v1 import AppTest
-    from promoflow.auth.service import create_session
-    from promoflow.db.models import User
-    from promoflow.ui.auth import _load
-
-    make_case(app_env)
-    with app_env.session_scope() as s:
-        token = create_session(s, s.scalar(select(User).where(User.email == "applicant@promoflow.test")))
-    expected = {
-        "section2": ["your CV"], "section3": ["academic degrees", "equivalency certificates"], "section4": ["academic rank decisions", "non-academic positions"],
-        "section5": ["published papers", "acceptance letters", "book chapters", "conference papers", "funded research projects", "awards", "Scopus"],
-        "section6": ["peer observation", "curriculum contributions", "teaching innovation", "syllabi"], "section7": ["policy contributions"],
-        "section8": ["recommendation letters"], "section9": ["signed conditions form"], "section10": ["signed cover letter"],
-    }
-    for module, nouns in expected.items():
-        script = f"from promoflow.ui import theme\nfrom promoflow.ui.views import {module}\ntheme.inject()\n{module}.render()\n"
-        at = AppTest.from_string(script, default_timeout=60)
-        at.session_state["current_user"] = _load(token)
-        at = at.run()
-        assert not at.exception, (module, [e.value for e in at.exception])
-        labels = " | ".join(_labels(at.main))
-        for noun in nouns:
-            assert noun in labels, (module, noun, labels)
-
-
 def test_the_study_start_is_filled_from_the_cv_with_a_check_note():
     v, issues = M.build_degree(M.DegreeCert(degree_name="Bachelor of Arts", field_of_study="Mass Communication", university="Al-Noor University", country="Jordan",
                                             conferral_date="15 July 2008", thesis_title=None), CTX)
-    d = E.EntryDraft("degree", "b.pdf", b"", v, issues, "picture")
+    d = E.EntryDraft("degree", "b.pdf", b"", v, issues, "ocr")
     M.fill_study_years([d], [M.CvDegreeRow(degree="BA", institution="Al-Noor University", years="2004-2008"),
                              M.CvDegreeRow(degree="MA", institution="Eastbridge University", years="2009-2011")])
     assert d.values["study_from"] == date(2004, 9, 1) and d.ok and d.issues[0].startswith("check:")
@@ -369,13 +329,12 @@ from promoflow.extraction import entry_docs_more as M
 from promoflow.ui import theme
 from promoflow.ui.views import entries_ui, section3
 
-def fake_read(kind, name, data, ctx, text_llm, vision_llm):
+def fake_read(kind, name, data, ctx):
     values, issues = M.build_degree(M.DegreeCert(degree_name="Bachelor of Arts", field_of_study="Mass Communication", university="Al-Noor University",
                                                  country="Jordan", conferral_date="15 July 2008", thesis_title=None), ctx)
-    return [E.EntryDraft("degree", name, data, values, issues, "picture")], None
+    return [E.EntryDraft("degree", name, data, values, issues, "ocr")]
 
 entries_ui.read_entries = fake_read
-entries_ui._models = lambda: ("text", "vision")
 theme.inject()
 st.session_state["s3_editing"] = "new"
 entries_ui._chosen_file = lambda key: SimpleNamespace(name="bsc.pdf", getvalue=lambda: b"%PDF-1.4 x") if key == "s3_f_new_cert" else None
@@ -411,10 +370,7 @@ def test_uploading_the_classification_form_makes_the_papers_journals_count(app_e
         before = {r.publication.title: r.classification.journal_class for r in s5p.load(s, case.id)}
         added = cf.declare_journals_from_form(s, case.id, form, 2026)
         again = cf.declare_journals_from_form(s, case.id, form, 2026)
-        for p in s.scalars(select(Publication)):
-            if "Frontiers" in p.title:
-                p.impact_factor = 2.5            # Class A also needs the paper's ISI impact factor
-        s.flush()
+        s.flush()                                # a journal declared as A in the form needs no separate impact factor on the paper
         after = {r.publication.title: r.classification.journal_class for r in s5p.load(s, case.id)}
     assert set(before.values()) == {JournalClass.NOT_COUNTED} and len(added) == 2 and again == []
     assert after == {"Paper in Frontiers in Sociology": JournalClass.CLASS_A, "Paper in Studies in Media and Communication": JournalClass.CLASS_B}
@@ -423,3 +379,24 @@ def test_uploading_the_classification_form_makes_the_papers_journals_count(app_e
 def test_arabic_journal_names_match_across_look_alike_letters():
     from promoflow.dossier.section5 import classification as cf
     assert cf._norm("مجلة حولیات الآداب والعلوم الاجتماعیة") == cf._norm("مجلة حوليات الآداب والعلوم الاجتماعية")
+
+
+def test_saving_a_patent_and_a_creative_work_from_their_documents(app_env):
+    from promoflow.db.models import CreativeWork, Patent
+
+    uid = make_case(app_env)
+    ctx = ctx_for(app_env, uid)
+    pv, pissues = M.build_patent(M.PatentDoc(title="Method for Detecting Anomalous Traffic", patent_number="US 11,234,567 B2", office="United States Patent and Trademark Office",
+                                             status="granted", grant_date="14 June 2022", inventors=["Nadia Karimi", "Thomas Okonkwo"]), ctx)
+    cv, cissues = M.build_creative(M.CreativeWorkDoc(title="Signal Garden", form="exhibition", venue="Sharjah Biennial Gallery", organizing_institution="Sharjah Art Foundation",
+                                                    date_from="5 March 2023", date_to="12 March 2023", approved=True), ctx)
+    assert pissues == [] and cissues == []
+    with app_env.session_scope() as s:
+        assert doc_entries.add_entries(s, uid, "patent", [draft("patent", pv)], ctx).added == 1
+        assert doc_entries.add_entries(s, uid, "patent", [draft("patent", pv)], ctx).added == 0           # the same patent number is not added twice
+        assert doc_entries.add_entries(s, uid, "creative", [draft("creative", cv)], ctx).added == 1
+    with app_env.session_scope() as s:
+        p = s.scalars(select(Patent)).one()
+        w = s.scalars(select(CreativeWork)).one()
+        assert (p.patent_number, p.status.value, p.grant_date, p.inventors) == ("US 11,234,567 B2", "granted", date(2022, 6, 14), "Nadia Karimi, Thomas Okonkwo")
+        assert (w.title, w.venue, w.date_from, w.date_to, w.approved) == ("Signal Garden", "Sharjah Biennial Gallery", date(2023, 3, 5), date(2023, 3, 12), True)

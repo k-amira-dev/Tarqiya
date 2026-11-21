@@ -30,7 +30,7 @@ def render() -> None:
 
     editable = ctx.status in EDITABLE
     if editable:
-        entries_ui.panel("cover_letter", "s10_flash")
+        entries_ui.add_bar(["cover_letter"], "s10_flash", default="manual")
     if flash := st.session_state.pop(K + "flash", None):
         st.success(flash, icon=":material/check_circle:")
     if not editable:

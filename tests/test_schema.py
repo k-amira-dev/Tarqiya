@@ -13,7 +13,7 @@ TABLES = Base.metadata.tables
 def test_all_tables_compile_for_postgresql():
     for t in Base.metadata.sorted_tables:
         CreateTable(t).compile(dialect=postgresql.dialect())
-    assert len(TABLES) == 65
+    assert len(TABLES) == 66
 
 
 def test_every_table_has_single_id_primary_key():

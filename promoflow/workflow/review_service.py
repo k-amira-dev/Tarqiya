@@ -37,8 +37,10 @@ from promoflow.auth.service import RoleGrant
 from promoflow.db import session as db_session
 from promoflow.db.enums import CaseStatus, FlagSeverity, Gate, GateOutcome, RoleName
 from promoflow.db.models import (
-    AuditLogEntry, CaseReport, CaseStatusHistory, Department, Flag, GateDecision, PromotionCase, User, UserRole,
+    AuditLogEntry, CaseReport, CaseStatusHistory, Department, Flag, GateDecision, PromotionCase, Referee, RefereeCandidate,
+    User, UserRole,
 )
+from promoflow.workflow import referee_view
 from promoflow.workflow.graph import build_graph, postgres_checkpointer
 
 log = logging.getLogger(__name__)
@@ -243,6 +245,17 @@ def select_referees(case_id: int, user_id: int, candidate_ids: list[int], *, wai
             raise ReviewError("This case is not waiting for referee selection.")
         if not _has_role(s, user_id, RoleName.CHANCELLOR, case):
             raise ReviewError("Only the Chancellor can select referees.")
+        # Only verified Professors without a conflict can be chosen. Checked here too, so no page can skip the rule.
+        shortlisted = {c.id: c for c in s.scalars(select(RefereeCandidate).where(
+            RefereeCandidate.id.in_(candidate_ids), RefereeCandidate.case_id == case_id))}
+        applicant_h = referee_view.applicant_h_index(s, case_id)
+        for candidate_id in candidate_ids:
+            cand = shortlisted.get(candidate_id)
+            if cand is None:
+                raise ReviewError("A selected candidate is not on this case's shortlist.")
+            referee = s.get(Referee, cand.referee_id)
+            if reason := referee_view.blocker(cand, referee, applicant_h):
+                raise ReviewError(f"{referee.full_name} cannot be selected: {reason}")
         version = _submissions(s, case_id)
         s.add(AuditLogEntry(user_id=user_id, case_id=case_id, action="referees_selected",
                             entity_table="promotion_case", entity_id=case_id, before=None,

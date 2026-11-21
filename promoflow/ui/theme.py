@@ -1,9 +1,12 @@
-"""PromoFlow look & feel: University of Sharjah palette (sustainability green, black navigation, light greys).
+"""Tarqiya look & feel: University of Sharjah palette (sustainability green, black navigation, light greys).
 
 Streamlit only lets us restyle its widgets through CSS, so this module injects one stylesheet and offers small
 helpers for HTML fragments. Widgets that need a specific style get a `key`, which Streamlit exposes as the
 CSS class `st-key-<key>` (e.g. `card_identity` → `.st-key-card_identity`).
 """
+import base64
+from functools import lru_cache
+from pathlib import Path
 import html as _html
 
 import streamlit as st
@@ -78,6 +81,7 @@ section[data-testid="stSidebar"] hr{border-color:rgba(255,255,255,.1)}
 .pf-soon span{color:#7E8983!important}
 .pf-soon em{font-style:normal;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#5F6A64!important;
   border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:1px 6px}
+.pf-uos{display:flex;justify-content:center;margin:4px 0 14px}
 .pf-brand{display:flex;align-items:center;gap:10px;padding:2px 4px 18px}
 .pf-brand b{font-size:18px;letter-spacing:-.3px;color:#fff}
 .pf-brand small{display:block;font-size:10.5px;color:#8F9B94!important;letter-spacing:.4px;margin-top:1px}
@@ -173,7 +177,7 @@ section[data-testid="stSidebar"] hr{border-color:rgba(255,255,255,.1)}
 .pf-reason:first-child{border-top:none}
 .pf-reason b{color:var(--ink)}
 
-/* ---------- "How PromoFlow works" page ---------- */
+/* ---------- "How Tarqiya works" page ---------- */
 .pf-flow{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;margin:6px 0 4px}
 .pf-step{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 15px;box-shadow:var(--shadow)}
 .pf-step:not(:last-child)::after{content:"›";position:absolute;right:-12px;top:14px;font-size:22px;font-weight:800;color:var(--g-600);z-index:2}
@@ -238,6 +242,20 @@ def esc(text) -> str:
 
 def logo(size: int = 30, hole: str = "#0B0D0C") -> str:
     return LOGO_SVG.format(s=size, hole=hole)
+
+
+_ASSETS = Path(__file__).parent / "assets"
+
+
+@lru_cache(maxsize=2)
+def _uos_logo_uri(light: bool) -> str:
+    return "data:image/png;base64," + base64.b64encode((_ASSETS / ("uos_logo_light.png" if light else "uos_logo.png")).read_bytes()).decode()
+
+
+def uos_logo(height: int = 48, light: bool = False) -> str:
+    """The University of Sharjah logo as an <img>, with a transparent background. `light` is the white version for dark backgrounds
+    (the sidebar); the normal one is black ink for light backgrounds."""
+    return f'<img src="{_uos_logo_uri(light)}" alt="University of Sharjah" style="height:{height}px;width:auto;display:block"/>'
 
 
 def card_header(number: str, title: str, subtitle: str = "", target=None) -> None:

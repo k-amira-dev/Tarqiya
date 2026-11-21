@@ -13,7 +13,7 @@ from promoflow.dossier.section0 import EDITABLE
 from promoflow.ui import cache, theme
 
 K = "s4_"
-RANK_LABEL = {Rank.LECTURER: "Lecturer", Rank.ASSISTANT_PROFESSOR: "Assistant Professor",
+RANK_LABEL = {Rank.ASSISTANT_LECTURER: "Assistant Lecturer", Rank.POSTDOC: "Post-Doctoral Researcher", Rank.LECTURER: "Lecturer", Rank.ASSISTANT_PROFESSOR: "Assistant Professor",
              Rank.ASSOCIATE_PROFESSOR: "Associate Professor", Rank.PROFESSOR: "Professor"}
 
 
@@ -34,9 +34,6 @@ def render() -> None:
         return
 
     editable = ctx.status in EDITABLE
-    if editable:
-        entries_ui.panel("rank", "s4_flash")
-        entries_ui.panel("position", "s4_flash")
     if flash := st.session_state.pop(K + "flash", None):
         st.success(flash, icon=":material/check_circle:")
     if not editable:
@@ -46,6 +43,8 @@ def render() -> None:
             st.warning(problem, icon=":material/warning:")
 
     st.subheader("4A · Rank history", divider="gray")
+    if editable:
+        entries_ui.add_bar(["rank"], "s4_flash", K + "editing_rank")
     editing_rank = st.session_state.get(K + "editing_rank")
     for row in ctx.ranks:
         if editing_rank == row.rank.id:
@@ -55,11 +54,10 @@ def render() -> None:
     if editable:
         if editing_rank == "new":
             _rank_form(today, editable, None)
-        elif st.button("+ Add a rank", key="s4_add_rank"):
-            st.session_state[K + "editing_rank"] = "new"
-            st.rerun()
 
     st.subheader("4B · Non-academic positions (optional)", divider="gray")
+    if editable:
+        entries_ui.add_bar(["position"], "s4_flash", K + "editing_position")
     editing_pos = st.session_state.get(K + "editing_position")
     for row in ctx.positions:
         if editing_pos == row.position.id:
@@ -69,9 +67,6 @@ def render() -> None:
     if editable:
         if editing_pos == "new":
             _position_form(editable, None)
-        elif st.button("+ Add a non-academic position", key="s4_add_position"):
-            st.session_state[K + "editing_position"] = "new"
-            st.rerun()
 
 
 def _rank_summary(row: s4.RankRow, today: date, editable: bool) -> None:

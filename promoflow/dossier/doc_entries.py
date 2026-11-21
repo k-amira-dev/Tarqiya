@@ -12,13 +12,13 @@ from sqlalchemy.orm import Session
 
 from promoflow.db.enums import DocumentKind
 from promoflow.db.models import (
-    AdministrativePosition, Award, Book, CommitteeMembership, CommunityActivity, ConferencePaper, CourseFile, CourseTaught, CurriculumContribution, Degree, FundedProject,
-    Journal, LookupValue, NonAcademicPosition, PeerObservation, PolicyContribution, Publication, RankHistory, RecommendationLetter, Supervision,
+    AdministrativePosition, Award, Book, CommitteeMembership, CommunityActivity, ConferencePaper, CourseFile, CourseTaught, CreativeWork, CurriculumContribution, Degree, FundedProject,
+    Journal, LookupValue, NonAcademicPosition, Patent, PeerObservation, PolicyContribution, Publication, RankHistory, RecommendationLetter, Supervision,
     TeachingDevelopment, TeachingInnovation, TrainingDelivered, WorkshopDelivered,
 )
 from promoflow.dossier import documents, section2 as s2, section3 as s3, section4 as s4, section8 as s8, section9 as s9, section10 as s10
 from promoflow.dossier.section0 import active_case
-from promoflow.dossier.section5 import awards as s5aw, books as s5b, conference as s5c, funded as s5d, papers as s5p, scopus as s5sc
+from promoflow.dossier.section5 import awards as s5aw, books as s5b, conference as s5c, creative as s5cr, funded as s5d, papers as s5p, patents as s5g, scopus as s5sc
 from promoflow.dossier.section5.common import case_for_new_entry as case5
 from promoflow.dossier.section6 import course_files as s6f, curriculum as s6d, innovation as s6g, peer_observations as s6b
 from promoflow.dossier.section7 import policy_contributions as s7a5
@@ -104,6 +104,10 @@ ADDERS = {
                lambda v, up: s5d.validate(v, date.today(), False, up), s5d.add),
     "award": (Award, lambda r: (_low(r.name), r.year), lambda v: (_low(v["name"]), v["year"]), case5,
               lambda v, up: s5aw.validate(v, date.today()), s5aw.add),
+    "patent": (Patent, lambda r: (_low(r.patent_number),), lambda v: (_low(v["patent_number"]),), case5,
+               lambda v, up: s5g.validate(v, date.today(), False, up), s5g.add),
+    "creative": (CreativeWork, lambda r: (_low(r.title), r.date_from), lambda v: (_low(v["title"]), v["date_from"]), case5,
+                 lambda v, up: s5cr.validate(v, date.today(), False, up), s5cr.add),
     "scopus": (None, None, None, case5, lambda v, up: s5sc.validate(v, date.today(), False, up), s5sc.save),
     "peer_observation": (PeerObservation, lambda r: (r.course_taught_id, r.observation_date), lambda v: (v["course_taught_id"], v["observation_date"]), case6,
                          lambda v, up: s6b.validate(v, date.today(), False, up), s6b.add),

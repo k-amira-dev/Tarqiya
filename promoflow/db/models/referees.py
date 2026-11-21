@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint,
+    JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -43,14 +43,14 @@ class Referee(IdMixin, TimestampMixin, Base):
     email: Mapped[str | None] = mapped_column(String(254), unique=True)
     university: Mapped[str] = mapped_column(String(300))
     country_code: Mapped[str] = mapped_column(String(2))  # must be outside the UAE (rule)
-    rank: Mapped[Rank] = mapped_column(pg_enum(Rank))  # from ORCID: Associate or Full Professor; never empty
+    rank: Mapped[Rank | None] = mapped_column(pg_enum(Rank))  # from ORCID: Associate or Full Professor; empty only on older rows
     orcid: Mapped[str | None] = mapped_column(String(19))   # from OpenAlex; used to read rank and email from ORCID
     rank_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # a person checked it
     scopus_author_id: Mapped[str | None] = mapped_column(String(40))
     openalex_author_id: Mapped[str | None] = mapped_column(String(40), unique=True)
     h_index: Mapped[int | None] = mapped_column(Integer)
     citation_count: Mapped[int | None] = mapped_column(Integer)
-    topics: Mapped[list | None] = mapped_column(JSONB)
+    topics: Mapped[list | None] = mapped_column(JSONB().with_variant(JSON(), "sqlite"))   # JSON on SQLite so the tests can use the table
 
 
 class RefereeCandidate(CaseChildMixin, Base):

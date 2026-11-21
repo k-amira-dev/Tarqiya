@@ -7,7 +7,7 @@ from promoflow.db.enums import CaseStatus, PromotionTrack, Rank
 from promoflow.db.session import session_scope
 from promoflow.dossier import section0 as s0
 from promoflow.rules.eligibility import (
-    CURRENT_RANK_FOR, MAX_JUSTIFICATION, TARGET_RANK_FOR, section0_checks, validate_section0, years_between,
+    CURRENT_RANK_FOR, MAX_JUSTIFICATION, RANK_ORDER, TARGET_RANK_FOR, section0_checks, validate_section0, years_between,
     assumed_submission_date,
 )
 from promoflow.ui import cache, theme
@@ -139,7 +139,7 @@ def _rank_card(editable) -> None:
         a, b = st.columns(2)
         a.date_input("Date of appointment at the University", key=K + "appointment_date",
                      min_value=date(1970, 1, 1), max_value=date.today(), format="DD/MM/YYYY", disabled=not editable)
-        b.selectbox("Academic rank on appointment", list(Rank)[:-1], key=K + "rank_on_appointment",
+        b.selectbox("Academic rank on appointment", [r for r in RANK_ORDER if r != Rank.PROFESSOR], key=K + "rank_on_appointment",
                     format_func=RANK_LABEL.get, placeholder="Choose a rank", disabled=not editable)
         c, d = st.columns(2)
         track = st.session_state.get(K + "track")
@@ -168,7 +168,7 @@ def _special_card(editable) -> None:
                   disabled=not editable)
         if st.session_state.get(K + "phd_outside_uae"):
             theme.html('<div class="pf-note">The additional foreign-PhD requirements are checked manually by the '
-                       'reviewer in this version of PromoFlow.</div>')
+                       'reviewer in this version of Tarqiya.</div>')
         st.toggle("I am applying early (my time in rank completes within 4 months of submission)",
                   key=K + "early_application", disabled=not editable)
         st.toggle("I am requesting the exceptional-case rule (exceptional research volume, after 4 years)",
@@ -176,7 +176,7 @@ def _special_card(editable) -> None:
         if st.session_state.get(K + "exceptional_case"):
             st.text_area("Justification for the exceptional case", key=K + "exceptional_justification",
                          max_chars=MAX_JUSTIFICATION, height=120, disabled=not editable,
-                         help="PromoFlow does not judge this request: your Head of Department decides.")
+                         help="Tarqiya does not judge this request: your Head of Department decides.")
         st.toggle("I applied before and the application was rejected", key=K + "previously_rejected",
                   disabled=not editable)
         if st.session_state.get(K + "previously_rejected"):

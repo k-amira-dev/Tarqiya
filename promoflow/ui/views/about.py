@@ -1,4 +1,4 @@
-"""The first page: "How PromoFlow works". A plain-language guide for anyone new to the promotion process or the system
+"""The first page: "How Tarqiya works". A plain-language guide for anyone new to the promotion process or the system
 (an applicant, a Head of Department or a Dean who has just joined). No technical detail on purpose."""
 import streamlit as st
 
@@ -9,7 +9,7 @@ from promoflow.ui import theme
 STEPS = [
     ("Prepare", "Applicant", "Fills in the dossier, Sections 0 to 10, and attaches the evidence for each claim."),
     ("Submit", "Applicant", "Applications are accepted only in the first week of January, April and October."),
-    ("Evaluate", "PromoFlow", "Checks eligibility and prepares an evaluation of research, teaching and service "
+    ("Evaluate", "Tarqiya", "Checks eligibility and prepares an evaluation of research, teaching and service "
                               "against the policy."),
     ("Head of Department", "Reviewer", "Reads the report, then approves the case or returns it with comments."),
     ("Dean", "Reviewer", "Reads the report and the Head's decision, then approves or returns the case."),
@@ -48,8 +48,8 @@ def render() -> None:
     user = st.session_state["current_user"]
     theme.html("""
     <div class="pf-hero"><div class="crumb">START HERE</div>
-    <h1>How PromoFlow works</h1>
-    <p>A short guide to the academic promotion process and to the system you will use. PromoFlow helps people
+    <h1>How Tarqiya works</h1>
+    <p>A short guide to the academic promotion process and to the system you will use. Tarqiya helps people
     prepare, check and review a promotion. It never decides one.</p></div>""")
 
     intro = next((text for role, text in ROLE_INTRO.items() if user.has(role)), None)

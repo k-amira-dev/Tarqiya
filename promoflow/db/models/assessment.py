@@ -62,7 +62,7 @@ class CriterionResult(IdMixin, Base):
     required_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
     actual_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
     passed: Mapped[bool | None] = mapped_column(Boolean)  # NULL = needs a human decision
-    policy_ref: Mapped[str | None] = mapped_column(String(60))
+    policy_ref: Mapped[str | None] = mapped_column(String(200))
 
 
 class ItemResult(IdMixin, Base):
@@ -138,6 +138,21 @@ class RubricScore(CaseChildMixin, Base):
     dean_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
     dean_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     change_reason: Mapped[str | None] = mapped_column(Text)  # required (in app code) when approved != suggested
+
+
+class RubricOpinion(IdMixin, Base):
+    """One committee model's own score for one rubric line. rubric_score keeps the median; this keeps every opinion so the
+    Head and the Dean can see who said what. Empty when the committee is off (one model)."""
+
+    __tablename__ = "rubric_opinion"
+    __table_args__ = (UniqueConstraint("rubric_score_id", "model_name"),)
+
+    rubric_score_id: Mapped[int] = mapped_column(ForeignKey("rubric_score.id", ondelete="CASCADE"), index=True)
+    model_name: Mapped[str] = mapped_column(String(100))
+    points: Mapped[Decimal] = mapped_column(Numeric(4, 1))
+    rationale: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[str | None] = mapped_column(String(10))   # "low" / "medium" / "high"
+    seal: Mapped[str | None] = mapped_column(String(64))         # keyed hash of this row, so an edited score is detected (db/seal.py)
 
 
 class CaseReport(CaseChildMixin, Base):

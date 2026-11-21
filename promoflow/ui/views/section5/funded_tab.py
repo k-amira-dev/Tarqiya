@@ -18,7 +18,7 @@ STATUS_LABEL = {ProjectStatus.ONGOING: "Ongoing", ProjectStatus.COMPLETED: "Comp
 
 def render(rows: list[s5d.FundedProjectRow], editable: bool) -> None:
     if editable:
-        entries_ui.panel("funded", "s5_flash")
+        entries_ui.add_bar(["funded"], "s5_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.project.id:
@@ -28,9 +28,6 @@ def render(rows: list[s5d.FundedProjectRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a funded project", key="s5d_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s5d.FundedProjectRow, editable: bool) -> None:

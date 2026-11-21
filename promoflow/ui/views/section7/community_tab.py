@@ -16,7 +16,7 @@ K = "s7b_"
 
 def render(rows: list[s7b.CommunityActivityRow], case_id: int, editable: bool) -> None:
     if editable:
-        entries_ui.panel("community", "s7_flash")
+        entries_ui.add_bar(["community"], "s7_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.activity.id:
@@ -26,9 +26,6 @@ def render(rows: list[s7b.CommunityActivityRow], case_id: int, editable: bool) -
     if editable:
         if editing == "new":
             _form(editable, case_id, None)
-        elif st.button("+ Add a community service activity", key="s7b_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s7b.CommunityActivityRow, editable: bool) -> None:

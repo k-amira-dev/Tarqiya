@@ -6,7 +6,7 @@ The same steps as the Section 6 report panels (section6/imports_ui.py), written 
 """
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 import streamlit as st
@@ -14,30 +14,17 @@ import streamlit as st
 from promoflow.db.session import session_scope
 from promoflow.ui import cache
 from promoflow.dossier import doc_entries
-from promoflow.extraction.doc_llm import ReadFailed, Usage
-from promoflow.extraction.entry_docs import KINDS, read_entries
-from promoflow.workflow import llm as llm_module
+from promoflow.extraction import rule_reports
+from promoflow.extraction.entry_docs import KINDS, parse_date, read_entries
+from promoflow.extraction.local_read import ReadFailed
 
 
-def _models():
-    try:
-        text_llm = llm_module.get_extraction_llm()
-    except llm_module.LLMNotConfigured:
-        return None, None
-    try:
-        vision_llm = llm_module.get_vision_llm()
-    except llm_module.LLMNotConfigured:
-        vision_llm = None
-    return text_llm, vision_llm
-
-
-def _work(kind, name, data, ctx, text_llm, vision_llm):
+def _work(kind, name, data, ctx):
     """Runs in a worker thread: no Streamlit calls in here."""
     try:
-        drafts, usage = read_entries(kind, name, data, ctx, text_llm, vision_llm)
-        return name, drafts, None, usage
+        return name, read_entries(kind, name, data, ctx), None
     except ReadFailed as e:
-        return name, [], str(e), Usage()
+        return name, [], str(e)
 
 
 WHOLE_NUMBERS = ("attendees", "year", "author_position", "total_authors", "h_index", "total_citations")
@@ -64,40 +51,34 @@ def _back(value, col):
         reverse = {label: code for code, label in (col.options or {}).items()}
         return reverse.get(value)
     if col.kind == "date":
-        return value.date() if hasattr(value, "date") and not isinstance(value, date) else value
+        # The table gives a date back as a date, a pandas timestamp (a datetime) or, once the applicant has typed into an empty cell, TEXT.
+        # An entry stores a plain date, and a datetime or a string cannot be compared with one.
+        if isinstance(value, str):
+            return parse_date(value)
+        return value.date() if isinstance(value, datetime) else value
     if col.kind == "number":
         return int(value) if float(value).is_integer() and col.key in WHOLE_NUMBERS else float(value)
     return value
 
 
-def _study_years_from_cv(drafts, cv_bytes, text_llm, problems, total) -> None:
-    """Fill the study start of degree drafts from the CV's Education table (one small model call)."""
-    import unicodedata
-
+def _study_years_from_cv(drafts, cv_bytes, problems) -> None:
+    """Fill the study start of degree drafts from the CV's Education table (read with pdfplumber)."""
     from promoflow.extraction import entry_docs_more as M
-    from promoflow.extraction.doc_llm import read_document
-    from promoflow.extraction.pdf_text import extract_text
 
-    text = extract_text(cv_bytes)
-    if not text.ok:
-        problems.append("Your CV: no text could be read, so the study start was not filled in.")
+    rows = rule_reports.cv_education(cv_bytes)
+    if rows is None:
+        problems.append("Your CV: no Education table was found, so the study start was not filled in.")
         return
-    try:
-        parsed, usage = read_document(M.cv_education_text(unicodedata.normalize("NFKC", text.text)), M.CvEducation, text_llm)
-    except ReadFailed as e:
-        problems.append(f"Your CV: {e}")
-        return
-    total += usage
-    M.fill_study_years(drafts, parsed.rows)
+    M.fill_study_years(drafts, rows)
 
 
 def panel(kind_key: str, flash_key: str) -> None:
     kind = KINDS[kind_key]
     key = f"ent_{kind_key}"
     user = st.session_state["current_user"]
-    with st.expander(f"Fill in from your documents ({kind.noun})", icon=":material/auto_fix_high:"):
-        st.caption("Upload the documents (PDF or scan) and press Read. Check the table, correct anything, and add. Each document is kept as the "
-                   "evidence for its entry.")
+    with st.container(key=f"auto_{kind_key}", border=True):
+        st.caption(f"Automatic upload · {kind.noun}. Upload the documents (PDF or scan) and press Read. Check the table, correct anything, and add. "
+                   "Each document is kept as the evidence for its entry.")
         picture = kind_key == "scopus"                 # a screenshot, not a PDF
         uploads = st.file_uploader(f"Documents: {kind.noun}", type=["pdf", "png", "jpg", "jpeg"] if picture else ["pdf"], accept_multiple_files=not picture, key=key + "_files")
         uploads = [uploads] if picture and uploads else uploads
@@ -108,30 +89,25 @@ def panel(kind_key: str, flash_key: str) -> None:
             return
         digest = hashlib.sha1(b"".join(u.getvalue() for u in uploads) + (cv_file.getvalue() if cv_file else b"")).hexdigest()
         if st.button(f"Read {len(uploads)} document{'s' if len(uploads) != 1 else ''}", icon=":material/auto_fix_high:", type="primary", key=key + "_read"):
-            text_llm, vision_llm = _models()
-            if text_llm is None:
-                st.error("Automatic reading is not set up on this server (no model key). You can still enter everything by hand.", icon=":material/error:")
-            else:
-                with session_scope() as s:
-                    ctx = doc_entries.load_ctx(s, user.full_name or "", user.id)
-                drafts, problems, total = [], [], Usage()
-                bar = st.progress(0.0, text="Reading…")
-                with ThreadPoolExecutor(max_workers=2) as pool:
-                    futures = [pool.submit(_work, kind, u.name, u.getvalue(), ctx, text_llm, vision_llm) for u in uploads]
-                    for done, f in enumerate(as_completed(futures), 1):
-                        name, draft, err, usage = f.result()
-                        total += usage
-                        drafts.extend(draft)
-                        if err:
-                            problems.append(f"{name}: {err}")
-                        bar.progress(done / len(futures), text=f"Read {done} of {len(futures)}")
-                bar.empty()
-                order = {u.name: i for i, u in enumerate(uploads)}
-                drafts.sort(key=lambda d: order.get(d.filename, 0))
-                if cv_file is not None:
-                    _study_years_from_cv(drafts, cv_file.getvalue(), text_llm, problems, total)
-                doc_entries.precheck(kind_key, drafts, ctx)
-                st.session_state[key] = {"digest": digest, "drafts": drafts, "problems": problems, "usage": total, "ctx": ctx}
+            with session_scope() as s:
+                ctx = doc_entries.load_ctx(s, user.full_name or "", user.id)
+            drafts, problems = [], []
+            bar = st.progress(0.0, text="Reading…")
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [pool.submit(_work, kind, u.name, u.getvalue(), ctx) for u in uploads]
+                for done, f in enumerate(as_completed(futures), 1):
+                    name, draft, err = f.result()
+                    drafts.extend(draft)
+                    if err:
+                        problems.append(f"{name}: {err}")
+                    bar.progress(done / len(futures), text=f"Read {done} of {len(futures)}")
+            bar.empty()
+            order = {u.name: i for i, u in enumerate(uploads)}
+            drafts.sort(key=lambda d: order.get(d.filename, 0))
+            if cv_file is not None:
+                _study_years_from_cv(drafts, cv_file.getvalue(), problems)
+            doc_entries.precheck(kind_key, drafts, ctx)
+            st.session_state[key] = {"digest": digest, "drafts": drafts, "problems": problems, "ctx": ctx}
         state = st.session_state.get(key)
         if not state or state["digest"] != digest:
             return
@@ -141,10 +117,10 @@ def panel(kind_key: str, flash_key: str) -> None:
         if not drafts:
             return
         cols = kind.columns(ctx)
-        st.caption(f"Read {len(uploads)} document{'s' if len(uploads) != 1 else ''}, {len(drafts)} entr{'ies' if len(drafts) != 1 else 'y'} ({state['usage'].describe()}). "
+        st.caption(f"Read {len(uploads)} document{'s' if len(uploads) != 1 else ''}, {len(drafts)} entr{'ies' if len(drafts) != 1 else 'y'}. "
                    "Rows with a problem start unticked; a \"check:\" note only asks you to look.")
         rows = [{"Add": d.ok, "File": d.filename, **{c.label: _cell(d.values.get(c.key), c) for c in cols},
-                 "Read by": "text" if d.route == "text" else "picture", "Problem": "; ".join(d.issues)} for d in drafts]
+                 "Read by": {"text": "text (pdfplumber)", "ocr": "scan (OCR)"}.get(d.route, d.route), "Problem": "; ".join(d.issues)} for d in drafts]
         config = {}
         for c in cols:
             if c.kind == "select":
@@ -170,6 +146,46 @@ def panel(kind_key: str, flash_key: str) -> None:
                 st.session_state.pop("s2_loaded", None)        # Section 2 fills its date box from the database once: let it do so again
             st.session_state[flash_key] = report.describe(kind.noun) + ("" if not report.rejected else " Not added: " + "; ".join(report.rejected[:3]))
             st.rerun()
+
+
+# ---- the two buttons at the top of every tab: Automatic upload and Manual upload --------------------------------------------------------
+#
+# Automatic upload: the documents are read on this machine and the entries are filled in for you to check.
+# Manual upload:    you type the values yourself (and attach the evidence file).
+# The two switch each other on and off, so exactly one of them is open at a time. `new_key` is the session key the tab uses to open its own
+# "add" form (K + "editing" set to "new"); a tab with a single document and no list has no such key.
+
+def add_bar(kinds=(), flash_key: str = "", new_key: str | None = None, auto=None, blocked: bool = False, blocked_why: str = "",
+            default: str | None = None) -> None:
+    ident = new_key or (kinds[0] if kinds else "bar")
+    mode_key = f"ab_{ident}"
+    manual_open = (st.session_state.get(new_key) == "new") if new_key else (st.session_state.get(mode_key, default) == "manual")
+    auto_open = st.session_state.get(mode_key) == "auto"
+    has_auto = bool(kinds) or auto is not None
+    left, right = st.columns(2)
+    if left.button("Automatic upload", icon=":material/auto_fix_high:", key=mode_key + "_auto", use_container_width=True, disabled=not has_auto,
+                   type="primary" if auto_open else "secondary",
+                   help=None if has_auto else "There is no automatic reading for this type of document yet: use Manual upload."):
+        st.session_state[mode_key] = None if auto_open else "auto"
+        if new_key:
+            st.session_state.pop(new_key, None)
+        st.rerun()
+    if right.button("Manual upload", icon=":material/edit_note:", key=mode_key + "_manual", use_container_width=True, disabled=blocked,
+                    type="primary" if manual_open else "secondary", help=blocked_why or None):
+        if new_key:
+            if manual_open:
+                st.session_state.pop(new_key, None)
+            else:
+                st.session_state[new_key] = "new"
+                st.session_state[mode_key] = "manual"
+        else:
+            st.session_state[mode_key] = "manual"
+        st.rerun()
+    if auto_open:
+        for kind_key in kinds:
+            panel(kind_key, flash_key)
+        if auto is not None:
+            auto()
 
 
 # ---- fill a form's own boxes from the document chosen in its uploader --------------------------------------------------
@@ -202,6 +218,10 @@ def _forms():
         "funded": ("evidence", {"title": ("title", "t"), "funding_body": ("body", "t"), "funder_code": ("funder_type", ("lookup", "funder_type")),
                                 "role": ("role", ("enum", E.InvestigatorRole)), "status": ("status", ("enum", E.ProjectStatus)), "amount": ("amount", "n"), "currency": ("currency", "t"),
                                 "start_date": ("start", "d"), "end_date": ("end", "d")}),
+        "patent": ("evidence", {"title": ("title", "t"), "patent_number": ("number", "t"), "office_code": ("office", ("lookup", "patent_office")),
+                                "status": ("status", ("enum", E.PatentStatus)), "grant_date": ("grant_date", "d"), "inventors": ("inventors", "t")}),
+        "creative": ("evidence", {"form_code": ("form", ("lookup", "creative_form")), "title": ("title", "t"), "venue": ("venue", "t"),
+                                  "organizing_institution": ("org", "t"), "date_from": ("from", "d"), "date_to": ("to", "d"), "approved": ("approved", "b")}),
         "award": ("evidence", {"name": ("name", "t"), "awarding_body": ("body", "t"), "year": ("year", "i"), "scope_code": ("scope", ("lookup", "award_scope"))}),
         "peer_observation": ("evidence", {"course_taught_id": ("course", "course"), "observer_code": ("role", ("lookup", "observer_role")), "observer_name": ("name", "t"),
                                           "observation_date": ("date", "d"), "rating": ("rating", "n"), "scale_max": ("scale", "n")}),
@@ -259,25 +279,21 @@ def autofill(kind_key: str, prefix: str) -> None:
     found = st.session_state.get(state_key)
     if found is None or found["digest"] != digest:
         found = {"digest": digest, "error": None, "issues": []}
-        text_llm, vision_llm = _models()
-        if text_llm is None:
-            found["error"] = "Automatic reading is not set up on this server. Please fill in the boxes yourself."
-        else:
-            user = st.session_state["current_user"]
-            with st.spinner("Reading the document…"):
-                with session_scope() as s:
-                    ctx = doc_entries.load_ctx(s, user.full_name or "", user.id)
-                try:
-                    drafts, _ = read_entries(KINDS[kind_key], upload.name, upload.getvalue(), ctx, text_llm, vision_llm)
-                except ReadFailed as e:
-                    found["error"] = str(e)
-                else:
-                    draft = drafts[0]
-                    for key, (suffix, conv) in mapping.items():
-                        value = _convert(draft.values.get(key), conv, ctx)
-                        if value is not None:
-                            st.session_state[prefix + suffix] = value
-                    found["issues"] = [i for i in draft.issues if i.startswith("check:")] + [i for i in draft.issues if not i.startswith("check:")]
+        user = st.session_state["current_user"]
+        with st.spinner("Reading the document…"):
+            with session_scope() as s:
+                ctx = doc_entries.load_ctx(s, user.full_name or "", user.id)
+            try:
+                drafts = read_entries(KINDS[kind_key], upload.name, upload.getvalue(), ctx)
+            except ReadFailed as e:
+                found["error"] = str(e)
+            else:
+                draft = drafts[0]
+                for key, (suffix, conv) in mapping.items():
+                    value = _convert(draft.values.get(key), conv, ctx)
+                    if value is not None:
+                        st.session_state[prefix + suffix] = value
+                found["issues"] = [i for i in draft.issues if i.startswith("check:")] + [i for i in draft.issues if not i.startswith("check:")]
         st.session_state[state_key] = found
     if found["error"]:
         st.warning(found["error"], icon=":material/description:")

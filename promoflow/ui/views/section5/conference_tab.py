@@ -14,7 +14,7 @@ K = "s5c_"
 
 def render(rows: list[s5c.ConferencePaperRow], editable: bool) -> None:
     if editable:
-        entries_ui.panel("conference", "s5_flash")
+        entries_ui.add_bar(["conference"], "s5_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.paper.id:
@@ -24,9 +24,6 @@ def render(rows: list[s5c.ConferencePaperRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a conference paper", key="s5c_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
     theme.html('<div class="pf-note">Recorded and shown in the narrative; not counted towards the '
               "publication minimums unless the policy confirms they count.</div>")
 

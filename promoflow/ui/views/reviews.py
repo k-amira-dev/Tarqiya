@@ -1,5 +1,7 @@
 """Reviews – the Head of Department's and the Dean's pages. Cases waiting at their gate, the Report Builder's report,
 and the decision. Nothing here runs an agent: the decision button calls promoflow.workflow.review_service.resume()."""
+import re
+
 import streamlit as st
 
 from promoflow.db.enums import Gate, GateOutcome, RoleName
@@ -27,7 +29,7 @@ def render() -> None:
     theme.html("""
     <div class="pf-hero"><div class="crumb">REVIEWS</div>
     <h1>Cases awaiting my decision</h1>
-    <p>PromoFlow prepares a report; you decide. Nothing moves to the next step until you approve it or return it
+    <p>Tarqiya prepares a report; you decide. Nothing moves to the next step until you approve it or return it
     to the applicant.</p></div>""")
     if not user.has(RoleName.HOD, RoleName.DEAN):
         st.info("Only the Head of Department and the Dean review cases here.", icon=":material/info:")
@@ -91,7 +93,7 @@ def _detail(user, case_id: int) -> None:
     for name in ("eligibility", "research", "teaching", "service"):
         out = d.report.get("eligibility") if name == "eligibility" else d.report["sections"].get(name)
         if out:
-            _agent_card(name, out)
+            _agent_card(name, out, d.case_id)
     if d.decisions:
         _decisions_card(d.decisions)
     _decision_form(user, d)
@@ -129,13 +131,14 @@ def _summary_strip(report: dict) -> None:
     theme.html(f'<div class="pf-sum">{tiles}</div>')
 
 
-def _agent_card(name: str, out: dict) -> None:
+def _agent_card(name: str, out: dict, case_id: int | None = None) -> None:
     kind, text = ("grey", "Placeholder") if out.get("is_stub") else VERDICT.get(out["verdict"], ("grey", out["verdict"]))
     title = rv.TITLE[name]
     table = rv.points_table(out)
     with st.container(key=f"card_agent_{name}"):
         # No long paragraph: the numbers are in the score banner and the table, the reasoning is one click away.
-        theme.card_header(name[:1].upper(), title, "" if table else (out.get("narrative") or ""))
+        reasoning = name == "research" and not out.get("is_stub") and out.get("narrative")
+        theme.card_header(name[:1].upper(), title, "" if table or reasoning else (out.get("narrative") or ""))
         if out.get("is_stub"):
             theme.html(f'<span class="pf-chip {kind}">{text}</span>')
             theme.html('<div class="pf-note">Placeholder: this evaluation has not been built yet, so this result '
@@ -146,6 +149,44 @@ def _agent_card(name: str, out: dict) -> None:
         else:
             theme.html(f'<span class="pf-chip {kind}">{text}</span>')
             _checks_table(rv.check_rows(out))
+            if name == "research" and case_id is not None:
+                _papers_table(case_id, out)
+            if reasoning:
+                _reasoning(out["narrative"])
+
+
+def _papers_table(case_id: int, out: dict) -> None:
+    """Research: one row per paper with the rules' decisions (class, counted, credited role) and the model's topic check."""
+    from sqlalchemy import select
+
+    from promoflow.db.models import Publication
+    from promoflow.dossier.section5.papers import DECLARED, classify_many
+
+    ids = [it["entity_id"] for it in out.get("items", []) if it.get("entity_table") == "publication"]
+    if not ids:
+        return
+    with session_scope() as s:
+        pubs = list(s.scalars(select(Publication).where(Publication.id.in_(ids))))
+        classes = classify_many(s, pubs)
+        papers = {p.id: (p.title, p.journal_name, bool(classes[p.id].journal and classes[p.id].journal.scopus_source_id == DECLARED)) for p in pubs}
+    rows = ""
+    for r in rv.paper_rows(out, papers):
+        source = '<br><small style="color:var(--muted)">class declared in the applicant&#39;s form, not an official ranking</small>' if r.declared else ""
+        topic_cls = "" if r.topic_ok else " low"
+        rows += (f'<tr><td>{theme.esc(r.title)}<br><small style="color:var(--muted)">{theme.esc(r.journal)}</small></td>'
+                 f'<td><span class="pf-tag">{r.journal_class}</span>{source}</td>'
+                 f'<td>{"Yes" if r.counted else "No"}</td><td>{theme.esc(r.credited)}</td>'
+                 f'<td><span class="pf-tag{topic_cls}">{theme.esc(r.topic)}</span></td></tr>')
+    st.markdown("**Papers: what was decided for each**")
+    theme.html('<table class="pf-tbl"><thead><tr><th>Paper</th><th>Journal class (rule)</th><th>Counted</th><th>Credited as</th>'
+               f'<th>Topic fit (AI)</th></tr></thead><tbody>{rows}</tbody></table>')
+
+
+def _reasoning(narrative: str) -> None:
+    """The Research evaluation's explanation, one point per line, in an expander under the table (like Teaching and Service)."""
+    parts = [p.strip() for p in re.split(r"\s-\s(?=[A-Z])", narrative) if p.strip()]
+    with st.expander("Why these results? The reasoning"):
+        theme.html("".join(f'<div class="pf-reason">{theme.esc(p)}</div>' for p in parts))
 
 
 def _points_view(table: "rv.PointsTable", kind: str, text: str) -> None:
@@ -162,6 +203,7 @@ def _points_view(table: "rv.PointsTable", kind: str, text: str) -> None:
                  f'(the black line) · <span class="pf-chip {kind}">{text}</span></div></div>')
     theme.html(f'<div class="pf-score">{banner}{meter}</div>')
 
+    models = table.models                              # committee only: one column per model
     rows = ""
     for r in table.rows:
         if r.no_evidence:
@@ -172,15 +214,32 @@ def _points_view(table: "rv.PointsTable", kind: str, text: str) -> None:
             cell = f'<div class="pf-pts"><b>{rv.g(r.points)} / {rv.g(r.max_points)}</b>{bar}</div>'                 if r.max_points else f'<div class="pf-pts"><b>{rv.g(r.points)}</b></div>'
         conf = (f'<span class="pf-tag{" low" if r.confidence == "Low" else ""}">{r.confidence}</span>'
                 if r.confidence and not r.no_evidence else "")
-        rows += (f'<tr><td class="n">{r.item_no}</td><td>{theme.esc(r.label)}</td><td>{cell}</td>'
+        votes = {m: pts for m, pts, _ in r.opinions}
+        # A model's own score is shaded when it differs from the decision (the median), so disagreement is visible at a glance.
+        model_cells = "".join(
+            f'<td class="r" style="text-align:center">' + (
+                f'<span class="pf-tag{"" if votes[m] == r.points else " low"}">{rv.g(votes[m])}</span>' if m in votes else "–") + "</td>"
+            for m in models)
+        flag = ' <span class="pf-chip amber">Models disagree: decide</span>' if r.disagree else ""
+        style = ' style="background:var(--amber-50)"' if r.disagree else ""
+        rows += (f'<tr{style}><td class="n">{r.item_no}</td><td>{theme.esc(r.label)}{flag}</td>{model_cells}<td>{cell}</td>'
                  f'<td><span class="pf-tag">{theme.esc(r.how)}</span></td><td>{conf}</td></tr>')
-    theme.html('<table class="pf-tbl"><thead><tr><th>#</th><th>What is assessed</th><th>Points</th>'
+    model_heads = "".join(f'<th style="text-align:center">{theme.esc(m)}</th>' for m in models)
+    points_head = "Decision (median)" if models else "Points"
+    theme.html(f'<table class="pf-tbl"><thead><tr><th>#</th><th>What is assessed</th>{model_heads}<th>{points_head}</th>'
                f'<th>How decided</th><th>Confidence</th></tr></thead><tbody>{rows}</tbody></table>')
+    if models:
+        theme.html('<div class="pf-note">Each model scored every AI-assisted item on its own. The decision is the median of their points. '
+                   "A shaded score differs from the decision. When the scores are far apart the item is marked for you to decide.</div>")
 
     with st.expander("Why these points? The reasoning for each item"):
-        theme.html("".join(
-            f'<div class="pf-reason"><b>Item {r.item_no} · {rv.g(r.points)} points.</b> {theme.esc(r.reason)}</div>'
-            for r in table.rows))
+        parts = ""
+        for r in table.rows:
+            parts += f'<div class="pf-reason"><b>Item {r.item_no} · {rv.g(r.points)} points.</b> {theme.esc(r.reason)}</div>'
+            for m, pts, why in r.opinions:             # what each model said, when a committee scored the item
+                parts += (f'<div class="pf-reason" style="margin-left:18px"><b>{theme.esc(m)} · {rv.g(pts)} points.</b> '
+                          f'{theme.esc(why)}</div>')
+        theme.html(parts)
 
 
 def _checks_table(checks: list) -> None:

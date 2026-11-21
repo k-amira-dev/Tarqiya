@@ -145,18 +145,22 @@ def openalex_coauthor_ids(author_id: str, since_year: int, get: Callable = get_j
 
 
 def openalex_candidate_ids(search: str, since_year: int, exclude: set[str], limit: int = 40,
-                           get: Callable = get_json) -> list[str]:
+                           get: Callable = get_json, pages: int = 3) -> list[str]:
     """Authors who published recently on the topic, most active first. `search` is the topic text (fine
-    specialization + keywords)."""
-    data = get(_openalex_url("/works", {
-        "search": search, "filter": f"from_publication_date:{since_year}-01-01",
-        "select": "id,authorships", "per_page": 100}))
+    specialization + keywords). Reads up to `pages` pages of 200 works, so a pool of 100 candidates can be filled."""
     counts: Counter = Counter()
-    for work in data.get("results", []):
-        for au in work.get("authorships") or []:
-            aid = _short_id((au.get("author") or {}).get("id"))
-            if aid and aid not in exclude:
-                counts[aid] += 1
+    for page in range(1, pages + 1):
+        data = get(_openalex_url("/works", {
+            "search": search, "filter": f"from_publication_date:{since_year}-01-01",
+            "select": "id,authorships", "per_page": 200, "page": page}))
+        results = data.get("results", [])
+        for work in results:
+            for au in work.get("authorships") or []:
+                aid = _short_id((au.get("author") or {}).get("id"))
+                if aid and aid not in exclude:
+                    counts[aid] += 1
+        if len(results) < 200:
+            break
     return [aid for aid, _ in counts.most_common(limit)]
 
 

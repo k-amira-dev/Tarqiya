@@ -8,6 +8,7 @@ from promoflow.db.models import CourseTaught
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import courses as s6a
 from promoflow.ui import theme
+from promoflow.ui.views import entries_ui
 from promoflow.ui.views.section6 import imports_ui
 
 K = "s6a_"
@@ -17,7 +18,8 @@ ROLE_LABEL = {TeachingRole.INSTRUCTOR: "Instructor", TeachingRole.INSTRUCTOR_COO
 DELIVERY_LABEL = {DeliveryMode.FACE_TO_FACE: "Face-to-face", DeliveryMode.BLENDED: "Blended", DeliveryMode.ONLINE: "Online"}
 
 
-def render(courses: list[CourseTaught], report, case_id: int, editable: bool) -> None:
+def _registrar_card(report, case_id: int, editable: bool) -> None:
+    """The registrar teaching-load report: the file on record, and (when editable) the reader that fills in the courses from it."""
     with st.container(key="card_registrar_report"):
         theme.card_header("01", "Registrar teaching-load report", "One file for the whole list (spec 6A).")
         if report is not None:
@@ -35,6 +37,12 @@ def render(courses: list[CourseTaught], report, case_id: int, editable: bool) ->
                 st.session_state["s6_flash"] = "Registrar report uploaded."
                 st.rerun()
 
+
+def render(courses: list[CourseTaught], report, case_id: int, editable: bool) -> None:
+    if editable:
+        entries_ui.add_bar([], "", K + "editing", auto=lambda: _registrar_card(report, case_id, True))
+    elif report is not None:
+        _registrar_card(report, case_id, False)
     summary = s6a.diversity(courses)
     if courses:
         with st.container(key="card_diversity"):
@@ -51,9 +59,6 @@ def render(courses: list[CourseTaught], report, case_id: int, editable: bool) ->
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a course", key="s6a_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(c: CourseTaught, editable: bool) -> None:

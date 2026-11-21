@@ -50,17 +50,11 @@ def _declare_journals(case_id: int, data: bytes) -> str:
     """Read the uploaded form and add its journals (that the table lacks) so the papers are counted. Returns a sentence for the applicant."""
     from datetime import date
 
-    from promoflow.extraction.doc_llm import ReadFailed
-    from promoflow.extraction.picture_doc import read_entry_file
-    from promoflow.ui.views import entries_ui
+    from promoflow.extraction import rule_reports
 
-    text_llm, vision_llm = entries_ui._models()
-    if text_llm is None:
-        return "The form could not be read automatically here, so the journals were not classified."
-    try:
-        form, _, _ = read_entry_file(data, s5e.ClassificationForm, text_llm, vision_llm)
-    except ReadFailed as e:
-        return f"The journals in the form were not classified: {e}"
+    form = rule_reports.classification_form(data)          # pdfplumber's table of the signed form
+    if form is None:
+        return "The journals in the form could not be read, so they were not classified."
     with session_scope() as s:
         added = s5e.declare_journals_from_form(s, case_id, form, date.today().year)
     if not added:

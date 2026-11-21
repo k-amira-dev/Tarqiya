@@ -62,13 +62,19 @@ def _latest_ranking(s: Session, journal_id: int | None) -> JournalRanking | None
                     .order_by(JournalRanking.year.desc()))
 
 
+# Journals added from a signed Journals Classification Form (dossier/section5/classification.py) are marked with this in `scopus_source_id`.
+# The form itself states that Class A means "Scopus top 20% with an impact factor, or the university's approved list", so a journal the
+# applicant declared as A already carries that claim and its papers do not need a separate impact factor typed in.
+DECLARED = "DECLARED-IN-FORM"
+
+
 # Class A, Class B or not counted. The decision itself is the pure rule in rules/research.py; no ranking on file
 # means not counted.
 def _classification(journal: Journal | None, ranking: JournalRanking | None, p: Publication) -> Classification:
     if ranking is None:
         return Classification(journal, None, JournalClass.NOT_COUNTED)
     cls = classify_journal(scopus_indexed=ranking.scopus_indexed, sjr_percentile=ranking.sjr_percentile,
-                           isi_listed=bool(journal and journal.isi_listed), has_impact_factor=p.impact_factor is not None)
+                           isi_listed=bool(journal and journal.isi_listed), has_impact_factor=p.impact_factor is not None or bool(journal and journal.scopus_source_id == DECLARED))
     return Classification(journal, ranking, cls)
 
 

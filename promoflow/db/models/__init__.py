@@ -27,7 +27,7 @@ from promoflow.db.models.service import (
 )
 from promoflow.db.models.assessment import (
     AgentAssessment, AgentRun, CaseReport, Claim, CriterionResult, DeanEvaluation, Flag, GateDecision,
-    ItemResult, RubricScore,
+    ItemResult, RubricOpinion, RubricScore,
 )
 from promoflow.db.models.referees import (
     OutreachMessage, Referee, RefereeCandidate, RefereePaperGrade, RefereeReport, ResearcherProfile,
@@ -58,4 +58,10 @@ SQLITE_TABLES = AUTH_TABLES + [
     # Agent outputs that run on SQLite (claim and rubric_score still need PostgreSQL-only types).
     AgentRun.__table__, AgentAssessment.__table__, CriterionResult.__table__, ItemResult.__table__, Flag.__table__,
     CaseReport.__table__, GateDecision.__table__, RubricScore.__table__,
+    RubricOpinion.__table__,
+    # The referee workflow (the Chancellor's page and the outreach step).
+    Referee.__table__, RefereeCandidate.__table__, ReviewerAssignment.__table__, OutreachMessage.__table__,
 ]
+
+# Turn on tamper-evident sealing of audit rows and model scores (listens for saves; see db/seal.py). Must come last.
+from promoflow.db import seal  # noqa: E402,F401

@@ -44,7 +44,7 @@ def render() -> None:
     _prefill(ctx)
     editable = ctx.status in EDITABLE
     if editable:
-        entries_ui.panel("cv", "s2_flash")
+        entries_ui.add_bar(["cv"], "s2_flash", default="manual")
 
     if flash := st.session_state.pop(K + "flash", None):
         st.success(flash, icon=":material/check_circle:")

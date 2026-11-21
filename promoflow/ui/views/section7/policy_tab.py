@@ -17,7 +17,7 @@ LEVEL_LABEL = {OrgLevel.DEPARTMENT: "Department", OrgLevel.COLLEGE: "College", O
 
 def render(rows: list[s7a5.PolicyContributionRow], editable: bool) -> None:
     if editable:
-        entries_ui.panel("policy", "s7_flash")
+        entries_ui.add_bar(["policy"], "s7_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.contribution.id:
@@ -27,9 +27,6 @@ def render(rows: list[s7a5.PolicyContributionRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a policy contribution", key="s7a5_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s7a5.PolicyContributionRow, editable: bool) -> None:

@@ -24,8 +24,7 @@ CLASS_LABEL = {JournalClass.CLASS_A: ("Class A", "green"), JournalClass.CLASS_B:
 def render(current_rank_date: date | None, previously_rejected: bool, rows: list[s5p.PublicationRow],
           editable: bool) -> None:
     if editable:
-        entries_ui.panel("paper", "s5_flash")
-        entries_ui.panel("acceptance", "s5_flash")
+        entries_ui.add_bar(["paper", "acceptance"], "s5_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.publication.id:
@@ -35,9 +34,6 @@ def render(current_rank_date: date | None, previously_rejected: bool, rows: list
     if editable:
         if editing == "new":
             _form(current_rank_date, previously_rejected, editable, None)
-        elif st.button("+ Add a journal paper", key="s5a_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s5p.PublicationRow, current_rank_date, editable: bool) -> None:

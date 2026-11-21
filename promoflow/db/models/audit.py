@@ -30,3 +30,6 @@ class AuditLogEntry(IdMixin, Base):
     before: Mapped[dict | None] = mapped_column(JSON_DOC)
     after: Mapped[dict | None] = mapped_column(JSON_DOC)
     detail: Mapped[str | None] = mapped_column(Text)
+    # Tamper evidence (see db/seal.py): a keyed hash of this row's fields and of the previous row's hash.
+    prev_hash: Mapped[str | None] = mapped_column(String(64))
+    entry_hash: Mapped[str | None] = mapped_column(String(64), index=True)

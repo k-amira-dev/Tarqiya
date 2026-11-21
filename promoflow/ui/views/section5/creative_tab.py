@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.session import session_scope
 from promoflow.dossier.section5 import creative as s5c
 from promoflow.ui import theme
@@ -12,6 +14,8 @@ K = "s5a2_"
 
 
 def render(rows: list[s5c.CreativeWorkRow], editable: bool) -> None:
+    if editable:
+        entries_ui.add_bar(["creative"], "s5_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.work.id:
@@ -21,9 +25,6 @@ def render(rows: list[s5c.CreativeWorkRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a creative / studio work", key="s5a2_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s5c.CreativeWorkRow, editable: bool) -> None:
@@ -57,6 +58,7 @@ def _form(editable: bool, row: "s5c.CreativeWorkRow | None") -> None:
     ids = list(options)
     with st.container(key=f"card_creative_form_{w.id if w else 'new'}"):
         theme.card_header("+", "Edit creative work" if w else "Add a creative / studio work")
+        entries_ui.autofill("creative", prefix)
         form_id = st.selectbox("Form of presentation", ids, format_func=options.get,
                                index=ids.index(w.form_id) if w else None, placeholder="Choose a form",
                                key=prefix + "form")

@@ -1,13 +1,11 @@
-"""Reading student-evaluation values from document text: rules, the model fallback, safety checks, course matching."""
+"""Reading student-evaluation values from document text (pdfplumber text, plain rules): the rules, the safety checks, course matching."""
 from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
 
-from promoflow.extraction.pdf_text import extract_text
-from promoflow.extraction.student_evaluation import (
-    LLMExtraction, extract_student_evaluation, match_course,
-)
+from promoflow.extraction.local_read import local_text
+from promoflow.extraction.student_evaluation import extract_student_evaluation, match_course
 
 FIXTURES = Path(__file__).parent / "fixtures" / "extraction"
 
@@ -21,42 +19,25 @@ Respondents: 41
 Average score: 4.3 out of 5"""
 
 
-class FakeLLM:
-    """Stands in for the Groq model: returns a fixed answer, or raises."""
-    def __init__(self, answer=None, error=None):
-        self.answer, self.error, self.calls = answer, error, 0
-
-    def with_structured_output(self, model):
-        return self
-
-    def invoke(self, messages):
-        self.calls += 1
-        if self.error:
-            raise self.error
-        return self.answer
-
-
 # ---- rules ----------------------------------------------------------------------------------------------------
 
 def test_b_style_document_is_fully_read_by_rules():
-    llm = FakeLLM(LLMExtraction())
-    r = extract_student_evaluation(B_STYLE, llm)
+    r = extract_student_evaluation(B_STYLE)
     assert r.values() == {"course_code": "ELEC311", "course_title": "Power Systems I", "academic_year": "2020/2021",
                           "semester": "spring", "enrolled": 53, "respondents": 41, "average_score": 4.3,
                           "scale_max": 5.0}
     assert r.respondents.snippet == "Respondents: 41" and r.respondents.source == "rule"
     assert r.missing() == [] and r.warnings == []
-    assert llm.calls == 0                      # nothing missing, so the model is not even asked
 
 
 def test_real_sample_pdf_end_to_end():
-    r = extract_student_evaluation(extract_text((FIXTURES / "student_evaluation_b.pdf").read_bytes()).text)
+    r = extract_student_evaluation(local_text((FIXTURES / "student_evaluation_b.pdf").read_bytes())[0])
     assert (r.course_code.value, r.respondents.value, r.enrolled.value) == ("ELEC300", 39, 51)
     assert (r.average_score.value, r.scale_max.value) == (4.3, 5.0)
 
 
 def test_course_file_style_document():
-    text = extract_text((FIXTURES / "course_file_a.pdf").read_bytes()).text
+    text = local_text((FIXTURES / "course_file_a.pdf").read_bytes())[0]
     r = extract_student_evaluation(text)
     assert r.course_code.value == "MEC210" and r.course_title.value == "Thermofluids Applications 1"
     assert r.semester.value == "spring"
@@ -109,42 +90,6 @@ def test_more_respondents_than_enrolled_is_warned_but_kept():
 def test_empty_or_unrelated_text_finds_nothing():
     r = extract_student_evaluation("Dear committee, I am delighted to apply for promotion.")
     assert r.values() == {} and r.missing() == ["respondents", "average_score", "scale_max"]
-
-
-# ---- language-model fallback ----------------------------------------------------------------------------------
-
-PERCENT_DOC = "Course\nELEC300 Intro\nEvaluation result: 86% satisfied\nThirty-nine students answered the survey."
-
-
-def test_model_fills_a_value_the_rules_missed_when_it_quotes_the_page():
-    llm = FakeLLM(LLMExtraction(average_score=86, scale_max=100, score_quote="Evaluation result: 86% satisfied"))
-    r = extract_student_evaluation(PERCENT_DOC, llm)
-    assert (r.average_score.value, r.scale_max.value) == (86, 100)
-    assert r.average_score.source == "llm" and r.average_score.snippet == "Evaluation result: 86% satisfied"
-    assert llm.calls == 1
-
-
-def test_model_answer_with_an_invented_quote_is_rejected():
-    llm = FakeLLM(LLMExtraction(respondents=39, respondents_quote="Respondents: 39"))
-    r = extract_student_evaluation(PERCENT_DOC, llm)
-    assert r.respondents is None
-
-
-def test_model_answer_whose_quote_does_not_contain_the_value_is_rejected():
-    llm = FakeLLM(LLMExtraction(respondents=40, respondents_quote="Thirty-nine students answered the survey."))
-    assert extract_student_evaluation(PERCENT_DOC, llm).respondents is None
-
-
-def test_model_cannot_override_what_the_rules_found():
-    llm = FakeLLM(LLMExtraction(respondents=99, respondents_quote="Respondents: 41"))
-    r = extract_student_evaluation(B_STYLE.replace("Average score: 4.3 out of 5", "Average score: 4.3"), llm)
-    assert r.respondents.value == 41 and r.respondents.source == "rule"
-
-
-def test_model_failure_is_a_warning_not_a_crash():
-    r = extract_student_evaluation("Respondents: 20", FakeLLM(error=RuntimeError("rate limit")))
-    assert r.respondents.value == 20 and r.average_score is None
-    assert any("not available" in w for w in r.warnings)
 
 
 # ---- matching to the Section 6A courses ----------------------------------------------------------------------------

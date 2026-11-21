@@ -9,6 +9,7 @@ dependencies = [
     "alembic>=1.13",
     "pgvector>=0.3",
     "argon2-cffi>=23.1",
+    "cryptography>=43",
     "streamlit>=1.42",
     "python-dotenv>=1.0",
     "pycountry>=24.6",
@@ -20,6 +21,10 @@ dependencies = [
     "langchain-groq>=1.0",
     "pypdf>=5.0",
     "pypdfium2>=4.30",
+    "pdfplumber>=0.11",
+    "rapidocr>=3.0",
+    "onnxruntime>=1.18",
+    "langchain-google-genai>=4.0",
 ]
 
 [project.optional-dependencies]

@@ -19,7 +19,7 @@ STATUS_LABEL = {SupervisionStatus.IN_PROGRESS: "In progress", SupervisionStatus.
 
 def render(rows: list[s6h.SupervisionRow], editable: bool) -> None:
     if editable:
-        entries_ui.panel("supervision", "s6_flash")
+        entries_ui.add_bar(["supervision"], "s6_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.supervision.id:
@@ -29,9 +29,6 @@ def render(rows: list[s6h.SupervisionRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a supervision", key="s6h_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s6h.SupervisionRow, editable: bool) -> None:

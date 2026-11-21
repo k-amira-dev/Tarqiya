@@ -17,7 +17,7 @@ TYPE_LABEL = {BookItemType.KNOWLEDGE_CONTRIBUTION: "Knowledge-contribution book"
 
 def render(rows: list[s5b.BookRow], editable: bool) -> None:
     if editable:
-        entries_ui.panel("book", "s5_flash")
+        entries_ui.add_bar(["book"], "s5_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.book.id:
@@ -27,9 +27,6 @@ def render(rows: list[s5b.BookRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a book / book chapter", key="s5b_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
     theme.html('<div class="pf-note">Caps (p.6): knowledge-contribution books max 2; specialized max 1; '
               'textbooks max 1; heritage max 1 (Class B); all books combined max 2 (Associate) / 3 (Full). '
               "Caps aren't enforced automatically yet.</div>")

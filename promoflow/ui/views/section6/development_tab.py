@@ -19,7 +19,7 @@ FORMAT_LABEL = {ActivityFormat.WORKSHOP: "Workshop", ActivityFormat.SEMINAR: "Se
 
 def render(rows: list[s6i.DevelopmentRow], editable: bool) -> None:
     if editable:
-        entries_ui.panel("development", "s6_flash")
+        entries_ui.add_bar(["development"], "s6_flash", K + "editing")
     theme.html('<div class="pf-note">Activities you organised or delivered (rather than attended) go in '
               "§7A-3 (service) instead.</div>")
     editing = st.session_state.get(K + "editing")
@@ -31,9 +31,6 @@ def render(rows: list[s6i.DevelopmentRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a development activity", key="s6i_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s6i.DevelopmentRow, editable: bool) -> None:

@@ -1,6 +1,8 @@
 """6E · Academic advising — the tab inside the Section 6 (Teaching & Academic Advising) page."""
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import Semester
 from promoflow.db.session import session_scope
 from promoflow.dossier.section6 import advising as s6e
@@ -13,7 +15,7 @@ K = "s6e_"
 
 def render(rows: list[s6e.AdvisingRow], editable: bool) -> None:
     if editable:
-        imports_ui.advising()
+        entries_ui.add_bar([], "", K + "editing", auto=imports_ui.advising)
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.semester.id:
@@ -23,9 +25,6 @@ def render(rows: list[s6e.AdvisingRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add an advising semester", key="s6e_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s6e.AdvisingRow, editable: bool) -> None:

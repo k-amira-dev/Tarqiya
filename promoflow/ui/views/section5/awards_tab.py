@@ -15,7 +15,7 @@ K = "s5h_"
 
 def render(rows: list[s5h.AwardRow], editable: bool) -> None:
     if editable:
-        entries_ui.panel("award", "s5_flash")
+        entries_ui.add_bar(["award"], "s5_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.award.id:
@@ -25,9 +25,6 @@ def render(rows: list[s5h.AwardRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add an award", key="s5h_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s5h.AwardRow, editable: bool) -> None:

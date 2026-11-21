@@ -39,9 +39,19 @@ class FakeLLM:
         return self.respond(len(self.calls), messages)
 
 
+# The agent sends records as tables (column names once, then one row per record) to keep the request small; the tests read them as records.
+def _records(tables: list[dict]) -> list[dict]:
+    return [dict(zip(t["columns"], row)) for t in tables for row in t["rows"]]
+
+
 # Read back the JSON evidence that the agent sent to the (fake) model.
 def payload(messages) -> dict:
-    return json.loads(messages[1][1].split("\n\nYour previous")[0])
+    p = json.loads(messages[1][1].split("\n\nYour previous")[0])
+    for item in p["items"]:
+        item["evidence"] = _records(item["evidence"])
+    if "shared_evidence" in p:
+        p["shared_evidence"]["records"] = _records(p["shared_evidence"]["records"])
+    return p
 
 
 # Build a model answer for every item that was sent: full points, citing the first piece of evidence.
@@ -120,7 +130,7 @@ def test_full_marks_pass_and_item_5_is_left_out_for_the_associate_track(app_env)
     assert points(out) == {1: 4, 2: 4, 3: 2, 4: 3, 6: 5, 7: 2, 8: 4, 9: 4, 10: 2}
     assert out.verdict == Verdict.PASS and len(llm.calls) == 1
     assert next(c for c in out.criteria if c.key == "teaching_total").actual == 30
-    assert all(c.verified for c in out.claims) and not out.is_stub and out.prompt_version == "teaching-v1"
+    assert all(c.verified for c in out.claims) and not out.is_stub and out.prompt_version == "teaching-v2"
 
 
 def test_the_full_professor_track_scores_item_5_and_caps_the_total(app_env):

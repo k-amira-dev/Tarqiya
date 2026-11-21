@@ -65,3 +65,56 @@ def test_reports_saved_before_max_value_existed_still_work():
 def test_number_formatting():
     assert (rv.g(12.0), rv.g(4.5), rv.g(None)) == ("12", "4.5", "–")
     assert rv.points_table({"criteria": [], "rubric": []}) is None
+
+
+RESEARCH = {
+    "model_name": "m", "flags": [{"code": "topic_mismatch", "entity_id": 2,
+                                  "message": "'Cooking at home' may be outside the applicant's field (high confidence): It is about cooking. A reviewer should check."}],
+    "items": [{"entity_table": "publication", "entity_id": 1, "counted": True, "classification": "class_a", "credited_role": "main author"},
+              {"entity_table": "publication", "entity_id": 2, "counted": True, "classification": "class_b", "credited_role": "co-author"},
+              {"entity_table": "book", "entity_id": 9, "counted": True, "classification": "chapter"}],
+}
+PAPERS = {1: ("Algorithmic visibility", "Frontiers in Sociology", True), 2: ("Cooking at home", "Some Journal", False)}
+
+
+def test_paper_rows_show_the_rules_decision_and_the_models_topic_check():
+    a, b = rv.paper_rows(RESEARCH, PAPERS)
+    assert (a.journal_class, a.declared, a.credited, a.topic, a.topic_ok) == ("Class A", True, "Main author", "Fits the field (AI)", True)
+    assert (b.journal_class, b.topic_ok) == ("Class B", False) and b.topic == "Check: It is about cooking."      # only papers; the book row is left out
+
+
+def test_topic_is_not_checked_when_the_model_did_not_run():
+    out = dict(RESEARCH, model_name=None, flags=[{"code": "llm_unavailable", "message": "x"}])
+    assert {r.topic for r in rv.paper_rows(out, PAPERS)} == {"Not checked"}
+
+
+# ---- committee: one column per model, the decision is the median ----------------------------------------------------
+
+COMMITTEE = {
+    "criteria": [{"key": "teaching_total", "label": "Teaching total", "required": 7, "actual": 9, "max_value": 14, "passed": True},
+                 {"key": "item_1", "label": "Item 1: Courses", "required": 0, "actual": 5, "max_value": 6, "passed": True},
+                 {"key": "item_2", "label": "Item 2: Innovation", "required": 0, "actual": 4, "max_value": 8, "passed": True}],
+    "rubric": [
+        {"item_no": 1, "suggested_points": 5, "basis": "llm", "confidence": "high", "rationale": "Median reason.",
+         "opinions": [{"model_name": "openai/gpt-oss-120b", "points": 5, "rationale": "A"},
+                      {"model_name": "qwen/qwen3.8-27b", "points": 6, "rationale": "B"},
+                      {"model_name": "gemini-3.5-flash", "points": 5, "rationale": "C"}]},
+        {"item_no": 2, "suggested_points": 4, "basis": "llm", "confidence": "high", "rationale": "Wide.",
+         "opinions": [{"model_name": "openai/gpt-oss-120b", "points": 1, "rationale": "A"},
+                      {"model_name": "qwen/qwen3.8-27b", "points": 7, "rationale": "B"},
+                      {"model_name": "gemini-3.5-flash", "points": 4, "rationale": "C"}]}],
+    "flags": [{"code": "committee_disagreement", "message": "Item 2: the models disagree (a 1, b 7). A person should decide."}],
+}
+
+
+def test_committee_table_has_a_column_per_model_and_marks_disagreement():
+    t = rv.points_table(COMMITTEE)
+    assert t.models == ("gpt-oss-120b", "qwen3.8-27b", "gemini-3.5-flash")
+    first, second = t.rows
+    assert [(m, p) for m, p, _ in first.opinions] == [("gpt-oss-120b", 5), ("qwen3.8-27b", 6), ("gemini-3.5-flash", 5)]
+    assert first.points == 5 and not first.disagree and second.disagree
+
+
+def test_a_single_model_report_has_no_model_columns():
+    t = rv.points_table(TEACHING)
+    assert t.models == () and all(r.opinions == () and not r.disagree for r in t.rows)

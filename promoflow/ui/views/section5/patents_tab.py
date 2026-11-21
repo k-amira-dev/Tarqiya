@@ -3,6 +3,8 @@ from datetime import date
 
 import streamlit as st
 
+from promoflow.ui.views import entries_ui
+
 from promoflow.db.enums import PatentStatus
 from promoflow.db.session import session_scope
 from promoflow.dossier.section5 import patents as s5g
@@ -14,6 +16,8 @@ STATUS_LABEL = {PatentStatus.FILED: "Filed", PatentStatus.GRANTED: "Granted"}
 
 
 def render(rows: list[s5g.PatentRow], editable: bool) -> None:
+    if editable:
+        entries_ui.add_bar(["patent"], "s5_flash", K + "editing")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.patent.id:
@@ -23,9 +27,6 @@ def render(rows: list[s5g.PatentRow], editable: bool) -> None:
     if editable:
         if editing == "new":
             _form(editable, None)
-        elif st.button("+ Add a patent", key="s5g_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
     theme.html('<div class="pf-note">Granted patents count as Class B, max 2 (Associate) / 3 (Full).</div>')
 
 
@@ -58,6 +59,7 @@ def _form(editable: bool, row: "s5g.PatentRow | None") -> None:
     ids = list(options)
     with st.container(key=f"card_patent_form_{p.id if p else 'new'}"):
         theme.card_header("+", "Edit patent" if p else "Add a patent")
+        entries_ui.autofill("patent", prefix)
         title = st.text_input("Patent title", value=p.title if p else "", key=prefix + "title")
         a, b = st.columns(2)
         patent_number = a.text_input("Patent number", value=p.patent_number if p else "", key=prefix + "number")

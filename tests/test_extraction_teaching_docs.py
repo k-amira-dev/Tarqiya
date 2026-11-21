@@ -1,5 +1,4 @@
-"""Reading whole documents with the model: the reader, the checks on its answer, the privacy step, and saving as entries.
-A fake model stands in for Groq, so nothing here costs money or needs a key."""
+"""The Section 6 reports: the checks on what was read (printed totals, impossible values, duplicates, advisee counts) and saving as entries."""
 from datetime import date
 from types import SimpleNamespace
 
@@ -11,24 +10,8 @@ from promoflow.dossier import section0 as s0
 from promoflow.dossier.section6 import advising as s6e
 from promoflow.dossier.section6 import courses as s6a
 from promoflow.dossier.section6 import imports, satisfaction as s6c
-from promoflow.extraction import doc_llm, teaching_docs as T
+from promoflow.extraction import teaching_docs as T
 from tests.test_eligibility_checker import ON, S0_VALUES
-
-
-class FakeLLM:
-    """Looks like the real model: .with_structured_output(...).invoke(...) -> {"raw", "parsed"}. `answers` are returned or raised in turn."""
-    def __init__(self, *answers):
-        self.answers, self.calls = list(answers), 0
-
-    def with_structured_output(self, schema, method=None, include_raw=False):
-        return self
-
-    def invoke(self, messages):
-        self.calls += 1
-        a = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
-        if isinstance(a, Exception):
-            raise a
-        return {"raw": SimpleNamespace(usage_metadata={"input_tokens": 1000, "output_tokens": 500}), "parsed": a, "parsing_error": None}
 
 
 # ---- helpers ---------------------------------------------------------------------------------------------------------
@@ -41,30 +24,6 @@ def test_semester_and_course_helpers():
     assert T.term_index("2018/2019", "spring") + 1 == T.term_index("2019/2020", "fall")
     assert T.norm_code("mcom201") == "MCOM 201" and T.norm_code("MCOM   310") == "MCOM 310"
     assert (T.level_for("MCOM 201"), T.level_for("MCOM 520")) == ("undergraduate", "graduate")
-
-
-# ---- the reader ------------------------------------------------------------------------------------------------------
-
-def test_reader_returns_the_answer_and_the_tokens_used():
-    answer = T.RegistrarReport(stated_sections=1, stated_enrolments=26, rows=[T.RegRow(semester="Fall 2018", course_code="MCOM 201", course_title="Intro", crn=10247, students=26)])
-    parsed, usage = doc_llm.read_document("some text", T.RegistrarReport, FakeLLM(answer))
-    assert parsed is answer and (usage.input_tokens, usage.output_tokens) == (1000, 500) and usage.cost_usd > 0
-
-
-def test_reader_retries_when_the_provider_says_too_many_tokens(monkeypatch):
-    monkeypatch.setattr(doc_llm.time, "sleep", lambda s: None)
-    answer = T.RegistrarReport(stated_sections=None, stated_enrolments=None, rows=[])
-    llm = FakeLLM(RuntimeError("RateLimitError 429 rate_limit_exceeded: please try again in 3.5s"), answer)
-    parsed, _ = doc_llm.read_document("text", T.RegistrarReport, llm)
-    assert parsed is answer and llm.calls == 2
-
-
-def test_reader_gives_a_plain_error_when_it_cannot_continue(monkeypatch):
-    monkeypatch.setattr(doc_llm.time, "sleep", lambda s: None)
-    with pytest.raises(doc_llm.ReadFailed, match="enter the values by hand"):
-        doc_llm.read_document("text", T.RegistrarReport, FakeLLM(ConnectionError("network down")))
-    with pytest.raises(doc_llm.ReadFailed, match="no text"):
-        doc_llm.read_document("   ", T.RegistrarReport, FakeLLM())
 
 
 # ---- 17: registrar report --------------------------------------------------------------------------------------------
@@ -125,41 +84,9 @@ def test_missing_scale_is_noted_and_can_be_entered():
     assert notes == [] and drafts[0].scale_max == 5.0
 
 
-def test_the_scale_is_found_in_the_text_when_the_model_misses_it():
+def test_the_scale_is_found_in_the_text():
     assert T.scale_from_text("Scores are the mean of student ratings on a scale from 1 to 5. The last column") == 5.0
     assert T.scale_from_text("Average rating 4.2 out of 10") == 10.0 and T.scale_from_text("no scale mentioned") is None
-    llm = FakeLLM(T.StudentEvaluations(scale_max=None, rows=[T.EvalRow(**EV)]))
-    res = T.read_student_evaluations("Scores ... on a scale from 1 to 5.", COURSES, llm)
-    assert res.drafts[0].scale_max == 5.0 and res.notes == []
-
-
-# ---- 21: advisee lists -----------------------------------------------------------------------------------------------
-
-LIST_TEXT = """Academic Advising - Advisee List - Spring 2021
-# Student
-ID
-Name College Department CGPA Hours
-1 U20185608 Tariq Mansour College of
-Communication
-Mass Communication 3.65 90 Dean's honour
-2 U20182449 Yousef Al-
-Mazrouei College of
-Communication
-Mass Communication 2.57 105 Good standing
-Advisees this semester: 2"""
-
-
-def test_names_and_ids_are_removed_before_reading():
-    out = T.redact_advisees(LIST_TEXT)
-    for secret in ("U20185608", "U20182449", "Tariq", "Mansour", "Yousef", "Mazrouei"):
-        assert secret not in out
-    assert T.pseudonym("U20185608") in out and out.count("College of") == 2
-    assert T.redact_advisees(LIST_TEXT) == out                       # the same student always gets the same code
-
-
-def test_a_list_whose_names_cannot_be_removed_is_not_sent():
-    with pytest.raises(T.PrivacyError):
-        T.redact_advisees("1 U20185608 Tariq Mansour somewhere else entirely")
 
 
 def adv(semester, rows, meetings=30, stated=None):

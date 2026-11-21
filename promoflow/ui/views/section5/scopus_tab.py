@@ -14,7 +14,7 @@ K = "s5f_"
 
 def render(ctx: s5f.Section5FContext, editable: bool) -> None:
     if editable:
-        entries_ui.panel("scopus", "s5_flash")
+        entries_ui.add_bar(["scopus"], "s5_flash", default="manual")
     with st.container(key="card_scopus"):
         theme.card_header("5F", "Scopus evidence", "A full-page screenshot of your Scopus author profile, "
                           "captured within 30 days of submission, showing name, affiliation, h-index and "

@@ -15,7 +15,7 @@ K = "s6b_"
 
 def render(rows: list[s6b.PeerObservationRow], course_options: dict[int, str], editable: bool) -> None:
     if editable:
-        entries_ui.panel("peer_observation", "s6_flash")
+        entries_ui.add_bar(["peer_observation"], "s6_flash", K + "editing", blocked=not course_options, blocked_why="Add a course in 6A first.")
     editing = st.session_state.get(K + "editing")
     for row in rows:
         if editing == row.observation.id:
@@ -27,9 +27,6 @@ def render(rows: list[s6b.PeerObservationRow], course_options: dict[int, str], e
             _form(editable, course_options, None)
         elif not course_options:
             st.info("Add a course in 6A first.", icon=":material/info:")
-        elif st.button("+ Add a peer observation", key="s6b_add"):
-            st.session_state[K + "editing"] = "new"
-            st.rerun()
 
 
 def _summary(row: s6b.PeerObservationRow, course_options: dict[int, str], editable: bool) -> None:

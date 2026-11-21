@@ -466,7 +466,10 @@ class InnovationDoc(BaseModel):
 
 def build_innovation(p: InnovationDoc, ctx: Ctx):
     issues, text = [], f"{p.title or ''} {p.what_was_done or ''}"
-    kind = ("ai_tool" if _has(text, " ai ", "ai-", "artificial", "ai tool") else "case_study" if _has(text, "versus", " vs", "compar") else
+    # A comparison is a case study even when the course it was run in is Artificial Intelligence, so that name is not read as an AI tool.
+    no_course_name = re.sub(r"artificial intelligence", " ", text, flags=re.I)
+    kind = ("case_study" if _has(text, "versus", " vs", "compar") else
+            "ai_tool" if _has(f" {no_course_name}", " ai ", "ai-", "artificial", "ai tool", "chatbot", "generative") else
             "blended" if _has(text, "flipped", "blended") else "collaborative" if _has(text, "collaborat", "peer") else
             "active" if _has(text, "active learning", "workshop", "game") else "edtech")
     course = match_course_row(p.course_code, p.term, ctx)
@@ -529,6 +532,54 @@ def build_letter(p: LetterDoc, ctx: Ctx):
             "relationship_code": code}, issues
 
 
+class PatentDoc(BaseModel):
+    title: str | None
+    patent_number: str | None
+    office: str | None
+    status: str | None
+    grant_date: str | None
+    inventors: list[str]
+
+
+def build_patent(p: PatentDoc, ctx: Ctx):
+    issues = []
+    office = ("uspto" if _has(p.office, "uspto", "united states") else "epo" if _has(p.office, "epo", "european") else
+              "uae_moe" if _has(p.office, "ministry of economy", "uae", "emirates") else "wipo" if _has(p.office, "wipo", "world intellectual", "patent cooperation") else
+              "other" if p.office else None)
+    grant = parse_date(p.grant_date)
+    status = "granted" if grant or _has(p.status, "grant") else "filed" if p.status else None
+    for missing, msg in ((not p.title, "title not found"), (not p.patent_number, "patent number not found"), (office is None, "choose the patent office"),
+                         (status is None, "choose the status"), (status == "granted" and grant is None, "grant date not found"), (not p.inventors, "inventors not found")):
+        if missing:
+            issues.append(msg)
+    if status == "filed":
+        issues.append("check: only granted patents are counted")
+    return {"title": tidy(p.title), "patent_number": (p.patent_number or "").strip(), "office_code": office, "status": status, "grant_date": grant,
+            "inventors": ", ".join(p.inventors)}, issues
+
+
+class CreativeWorkDoc(BaseModel):
+    title: str | None
+    form: str | None
+    venue: str | None
+    organizing_institution: str | None
+    date_from: str | None
+    date_to: str | None
+    approved: bool | None
+
+
+def build_creative(p: CreativeWorkDoc, ctx: Ctx):
+    issues = []
+    d_from, d_to = parse_date(p.date_from), parse_date(p.date_to)
+    for missing, msg in ((not p.title, "title not found"), (p.form is None, "choose the form of presentation"), (not p.venue, "venue not found"),
+                         (not p.organizing_institution, "organizing institution not found"), (d_from is None, "start date not found"),
+                         (p.approved is None, "state whether this work was approved as creative work")):
+        if missing:
+            issues.append(msg)
+    return {"title": tidy(p.title), "form_code": p.form, "venue": tidy(p.venue), "organizing_institution": tidy(p.organizing_institution), "date_from": d_from,
+            "date_to": d_to, "approved": p.approved}, issues
+
+
 class SignedDateDoc(BaseModel):
     signed_date: str | None = Field(description="the date the document was signed or dated")
 
@@ -555,7 +606,7 @@ def _fin_enum(*pairs, lookups=()):
 
 def _register():
     from promoflow.db.enums import (
-        AuthorRole, BookItemType, DegreeLevel, DevelopmentDepth, InvestigatorRole, Language, MainAuthorBasis, OrgLevel, ProjectStatus, PublicationStatus, Rank,
+        AuthorRole, BookItemType, DegreeLevel, DevelopmentDepth, InvestigatorRole, Language, MainAuthorBasis, OrgLevel, PatentStatus, ProjectStatus, PublicationStatus, Rank,
     )
     ranks = {"lecturer": "Lecturer", "assistant_professor": "Assistant Professor", "associate_professor": "Associate Professor", "professor": "Professor"}
     levels_deg = {"bachelor": "Bachelor", "master": "Master", "phd": "PhD", "other_doctorate": "Other doctorate"}
@@ -596,29 +647,35 @@ def _register():
         "position": Kind("position", "non-academic positions", EmploymentDoc, build_position,
                          lambda ctx: [Col("Position", "position"), Col("Employer", "employer"), Col("Country", "country_code", "select", _country_options()),
                                       Col("From", "date_from", "date"), Col("To", "date_to", "date")], lambda v, ctx: dict(v)),
-        "paper": Kind("paper", "published papers", PaperDoc, build_paper, paper_cols, paper_fin,
-                      lambda ctx: f"The applicant is {ctx.applicant_name}. List every author exactly as printed, in order.", max_chars=3000),
-        "acceptance": Kind("acceptance", "acceptance letters (accepted papers)", AcceptanceLetter, build_acceptance, paper_cols, paper_fin,
-                           lambda ctx: f"The applicant is {ctx.applicant_name}. List every author named in the letter, in order."),
+        "paper": Kind("paper", "published papers", PaperDoc, build_paper, paper_cols, paper_fin),
+        "acceptance": Kind("acceptance", "acceptance letters (accepted papers)", AcceptanceLetter, build_acceptance, paper_cols, paper_fin),
         "book": Kind("book", "book chapters", BookChapterDoc, build_book,
                      lambda ctx: [Col("Book", "book_title"), Col("Chapter", "chapter_title"), Col("Publisher", "publisher"), Col("Published", "publication_date", "date"),
                                   Col("ISBN", "isbn"), Col("Main or sole author", "main_or_sole_author", "select", YES_NO), Col("From your thesis", "from_thesis", "select", YES_NO)],
-                     _fin_enum(("item_type", BookItemType)), lambda ctx: f"The applicant is {ctx.applicant_name}.", max_chars=3000),
+                     _fin_enum(("item_type", BookItemType))),
         "conference": Kind("conference", "conference papers", ConferencePaperDoc, build_conference,
                            lambda ctx: [Col("Paper", "title"), Col("Conference", "conference_title"), Col("Organizer", "organizer"), Col("Place", "place"),
                                         Col("Date", "conference_date", "date"), Col("Pages", "pages"), Col("Main or sole author", "main_or_sole_author", "select", YES_NO),
                                         Col("Indexed in Scopus", "scopus_indexed", "select", YES_NO)],
-                           lambda v, ctx: dict(v), lambda ctx: f"The applicant is {ctx.applicant_name}.", max_chars=3000),
+                           lambda v, ctx: dict(v)),
         "funded": Kind("funded", "funded research projects", FundedProjectDoc, build_funded,
                        lambda ctx: [Col("Project", "title"), Col("Funding body", "funding_body"), Col("Funder type", "funder_code", "select", _opts(ctx, "funder_type")),
                                     Col("Your role", "role", "select", {"pi": "Principal investigator", "ci": "Co-investigator"}), Col("Amount", "amount", "number"),
                                     Col("Currency", "currency"), Col("From", "start_date", "date"), Col("To", "end_date", "date"),
                                     Col("Status", "status", "select", {"ongoing": "Ongoing", "completed": "Completed"})],
-                       _fin_enum(("role", InvestigatorRole), ("status", ProjectStatus), lookups=(("funder_type", "funder_code", "funder_type_id"),)),
-                       lambda ctx: f"The applicant is {ctx.applicant_name}. Give applicant_role as the role listed for THIS person."),
+                       _fin_enum(("role", InvestigatorRole), ("status", ProjectStatus), lookups=(("funder_type", "funder_code", "funder_type_id"),))),
         "award": Kind("award", "awards", AwardDoc, build_award,
                       lambda ctx: [Col("Award", "name"), Col("Awarding body", "awarding_body"), Col("Year", "year", "number"), Col("Scope", "scope_code", "select", _opts(ctx, "award_scope"))],
                       _fin_enum(lookups=(("award_scope", "scope_code", "scope_id"),))),
+        "patent": Kind("patent", "patents", PatentDoc, build_patent,
+                       lambda ctx: [Col("Patent", "title"), Col("Number", "patent_number"), Col("Office", "office_code", "select", _opts(ctx, "patent_office")),
+                                    Col("Status", "status", "select", {"filed": "Filed", "granted": "Granted"}), Col("Granted on", "grant_date", "date"), Col("Inventors", "inventors")],
+                       _fin_enum(("status", PatentStatus), lookups=(("patent_office", "office_code", "office_id"),))),
+        "creative": Kind("creative", "creative works", CreativeWorkDoc, build_creative,
+                         lambda ctx: [Col("Title", "title"), Col("Form", "form_code", "select", _opts(ctx, "creative_form")), Col("Venue", "venue"),
+                                      Col("Organizing institution", "organizing_institution"), Col("From", "date_from", "date"), Col("To", "date_to", "date"),
+                                      Col("Approved as creative work", "approved", "select", YES_NO)],
+                         _fin_enum(lookups=(("creative_form", "form_code", "form_id"),))),
         "scopus": Kind("scopus", "the Scopus profile screenshot", ScopusDoc, build_scopus,
                        lambda ctx: [Col("h-index", "h_index", "number"), Col("Total citations", "total_citations", "number"), Col("Screenshot date", "screenshot_date", "date")],
                        lambda v, ctx: dict(v)),
@@ -630,7 +687,7 @@ def _register():
                            lambda ctx: [Col("Type", "type_code", "select", _opts(ctx, "curriculum_contribution_type")), Col("Course or program", "course_or_program"),
                                         Col("What changed", "changes", "multi", _opts(ctx, "course_change")), Col("Approved by", "approved_by", "select", LEVELS),
                                         Col("Approval date", "approval_date", "date"), Col("What you did", "description")],
-                           curriculum_fin, rows="rows"),
+                           curriculum_fin),
         "innovation": Kind("innovation", "teaching innovation reports", InnovationDoc, build_innovation,
                            lambda ctx: [Col("Type", "type_code", "select", _opts(ctx, "innovation_type")), course_col(ctx), Col("What was done", "description"),
                                         Col("Measured outcome", "measured_outcome")],
@@ -642,14 +699,12 @@ def _register():
         "policy": Kind("policy", "policy contributions", PolicyDoc, build_policy,
                        lambda ctx: [Col("Policy", "policy_name"), Col("Level", "level", "select", LEVELS), Col("Your role", "role_code", "select", _opts(ctx, "policy_role")),
                                     Col("Date", "activity_date", "date")],
-                       _fin_enum(("level", OrgLevel), lookups=(("policy_role", "role_code", "role_id"),)),
-                       lambda ctx: f"The applicant is {ctx.applicant_name}. Give applicant_role as the role listed for THIS person."),
+                       _fin_enum(("level", OrgLevel), lookups=(("policy_role", "role_code", "role_id"),))),
         "letter": Kind("letter", "recommendation letters", LetterDoc, build_letter,
                        lambda ctx: [Col("Writer", "writer_name"), Col("Rank / title", "writer_rank"), Col("Institution", "writer_institution"),
                                     Col("Relationship", "relationship_code", "select", _opts(ctx, "recommendation_relationship"))],
                        _fin_enum(lookups=(("recommendation_relationship", "relationship_code", "relationship_id"),))),
-        "cv": Kind("cv", "your CV", SignedDateDoc, build_signed_date, lambda ctx: [Col("Last updated", "signed_date", "date")], lambda v, ctx: dict(v),
-                   lambda ctx: "signed_date is the date the CV was last updated (printed in the header or footer), if any."),
+        "cv": Kind("cv", "your CV", SignedDateDoc, build_signed_date, lambda ctx: [Col("Last updated", "signed_date", "date")], lambda v, ctx: dict(v)),
         "conditions": Kind("conditions", "the signed conditions form", SignedDateDoc, build_signed_date, lambda ctx: [Col("Signed on", "signed_date", "date")], lambda v, ctx: dict(v)),
         "cover_letter": Kind("cover_letter", "the signed cover letter", SignedDateDoc, build_signed_date, lambda ctx: [Col("Signed on", "signed_date", "date")], lambda v, ctx: dict(v)),
     })
@@ -664,17 +719,6 @@ class CvDegreeRow(BaseModel):
     degree: str | None = Field(description="the degree, as printed in the Education table")
     institution: str | None = Field(description="the university")
     years: str | None = Field(description="the years of study as printed, for example '2012-2016'")
-
-
-class CvEducation(BaseModel):
-    rows: list[CvDegreeRow] = Field(description="one row per degree in the Education table")
-
-
-def cv_education_text(cv_text: str) -> str:
-    """The part of the CV text that holds the Education table (the whole CV is long and the rest is not needed)."""
-    m = re.search(r"\n\s*Education\s*\n\s*Degree", cv_text)
-    start = m.start() if m else 0
-    return cv_text[start:start + 2500]
 
 
 def fill_study_years(drafts: list, rows: list[CvDegreeRow]) -> None:

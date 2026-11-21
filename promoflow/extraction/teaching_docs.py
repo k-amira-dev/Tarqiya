@@ -1,12 +1,13 @@
-"""Reading three kinds of Section 6 documents with the language model, and CHECKING what comes back:
+"""Reading three kinds of Section 6 documents (pdfplumber tables and plain rules, see rule_reports.py) and CHECKING what comes back:
 
   * the registrar teaching-load report  -> the course list of 6A
   * the student evaluation report       -> the student satisfaction entries of 6C
-  * the academic advisee lists          -> the advising semesters of 6E (student names and IDs are removed BEFORE the model sees them)
+  * the academic advisee lists          -> the advising semesters of 6E (a student's name is never read: only an anonymous code, the CGPA,
+                                           the hours and the status)
 
-The model only copies rows out of the document. Everything that decides whether a row can be trusted is plain code here: the document's
-own printed totals, impossible values, duplicates, and matching to courses the applicant already entered. A row with a problem is shown
-to the applicant with the reason, and is not saved unless the applicant fixes it. Nothing here touches the database.
+Everything that decides whether a row can be trusted is plain code here: the document's own printed totals, impossible values, duplicates, and
+matching to courses the applicant already entered. A row with a problem is shown to the applicant with the reason, and is not saved unless the
+applicant fixes it. Nothing here touches the database.
 """
 import hashlib
 import re
@@ -14,7 +15,8 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
-from promoflow.extraction.doc_llm import Usage, read_document
+from promoflow.extraction import rule_reports
+from promoflow.extraction.local_read import ReadFailed
 
 SEMESTER = re.compile(r"(fall|spring|summer)\s*(\d{4})", re.I)
 
@@ -70,10 +72,6 @@ class RegistrarReport(BaseModel):
     rows: list[RegRow]
 
 
-REGISTRAR_HINT = ("This is a registrar teaching-load report. The semester appears only on the first row of each group; repeat it on the "
-                  "rows below it until the next semester starts. Copy the course code and the course title separately.")
-
-
 @dataclass
 class CourseDraft:
     academic_year: str | None
@@ -94,7 +92,6 @@ class CourseDraft:
 class ReadResult:
     drafts: list
     notes: list[str]              # problems with the whole document (a total that does not match, ...)
-    usage: Usage
 
 
 def build_course_drafts(parsed: RegistrarReport) -> tuple[list[CourseDraft], list[str]]:
@@ -120,10 +117,17 @@ def build_course_drafts(parsed: RegistrarReport) -> tuple[list[CourseDraft], lis
     return drafts, notes
 
 
-def read_registrar_report(text: str, llm) -> ReadResult:
-    parsed, usage = read_document(text, RegistrarReport, llm, REGISTRAR_HINT)
+RULES_FAILED = ("The table in this report could not be read (its layout is not one the reader knows, or the file is a scan). "
+                "Please enter the values by hand.")
+
+
+def read_registrar_report(data: bytes) -> ReadResult:
+    """Read the report with pdfplumber's tables and plain rules."""
+    parsed = rule_reports.registrar(data)
+    if parsed is None:
+        raise ReadFailed(RULES_FAILED)
     drafts, notes = build_course_drafts(parsed)
-    return ReadResult(drafts, notes, usage)
+    return ReadResult(drafts, notes)
 
 
 # ===== 19: student evaluation report ================================================================================
@@ -146,9 +150,6 @@ class StudentEvaluations(BaseModel):
     rows: list[EvalRow]
 
 
-EVAL_HINT = ("This is a student evaluation report. The semester appears only on the first row of each group; repeat it on the rows below "
-             "until the next semester starts. 'Instructor' is the instructor's own mean score. If the text says the scores are on a scale "
-             "'from 1 to 5', scale_max is 5.")
 SCALE = re.compile(r"scale\s+(?:of|from)\s+(?:\d+(?:\.\d+)?\s+to\s+)?(\d+(?:\.\d+)?)|out\s+of\s+(\d+(?:\.\d+)?)", re.I)
 
 
@@ -210,35 +211,19 @@ def build_sat_drafts(parsed: StudentEvaluations, courses: list, scale_override: 
     return drafts, notes
 
 
-def read_student_evaluations(text: str, courses: list, llm, scale_override: float | None = None) -> ReadResult:
-    parsed, usage = read_document(text, StudentEvaluations, llm, EVAL_HINT)
-    if parsed.scale_max is None:
-        parsed.scale_max = scale_from_text(text)
+def read_student_evaluations(courses: list, data: bytes, scale_override: float | None = None) -> ReadResult:
+    parsed = rule_reports.evaluations(data)              # pdfplumber tables and plain rules
+    if parsed is None:
+        raise ReadFailed(RULES_FAILED)
     drafts, notes = build_sat_drafts(parsed, courses, scale_override)
-    return ReadResult(drafts, notes, usage)
+    return ReadResult(drafts, notes)
 
 
 # ===== 21: advisee lists (names and IDs are removed before reading) ==================================================
 
-class PrivacyError(Exception):
-    """The names could not be removed from the document, so it was NOT sent to the model."""
-
-
-_ID = r"\b[A-Z]{1,2}\d{7,9}\b"
-_ROW = re.compile(rf"({_ID})\s+(.+?)\s+(?=College\s+of\b)", re.S)      # an ID, then the (possibly wrapped) name, then the college
-
-
 def pseudonym(student_id: str) -> str:
     """The same student always gets the same code, so a student can be followed from one semester's list to the next."""
     return "ID-" + hashlib.sha256(("promoflow-advisees:" + student_id).encode()).hexdigest()[:8]
-
-
-def redact_advisees(text: str) -> str:
-    """Replace each student ID by an anonymous code and delete the student's name. Raises PrivacyError if an ID is left."""
-    out = _ROW.sub(lambda m: pseudonym(m.group(1)) + " ", text)
-    if re.search(_ID, out):
-        raise PrivacyError("The student names could not be removed from this list, so it was not sent for reading.")
-    return out
 
 
 class AdvRow(BaseModel):
@@ -253,9 +238,6 @@ class AdviseeList(BaseModel):
     stated_advisees: int | None   # "Advisees this semester: 21"
     advising_meetings: int | None
     rows: list[AdvRow]
-
-
-ADVISEE_HINT = "This is an academic advisee list. The student column holds anonymous codes. Copy the semester from the title."
 
 
 @dataclass
@@ -313,7 +295,10 @@ def build_advising_drafts(items: list[tuple[str, bytes, AdviseeList]]) -> list[A
     return sorted(drafts, key=lambda d: (term_index(d.academic_year, d.semester) if d.academic_year and term_index(d.academic_year, d.semester) is not None else 10 ** 9))
 
 
-def read_advisee_list(filename: str, data: bytes, text: str, llm) -> tuple[str, bytes, AdviseeList, Usage]:
-    """Remove the names, read the list, and return it ready for build_advising_drafts()."""
-    parsed, usage = read_document(redact_advisees(text), AdviseeList, llm, ADVISEE_HINT)
-    return filename, data, parsed, usage
+def read_advisee_list(filename: str, data: bytes) -> tuple[str, bytes, AdviseeList]:
+    """Read one list with pdfplumber's table and return it ready for build_advising_drafts(). The student's name is never read: only an anonymous
+    code, the CGPA, the hours and the status are kept."""
+    parsed = rule_reports.advisees(data)
+    if parsed is None:
+        raise ReadFailed(RULES_FAILED)
+    return filename, data, parsed

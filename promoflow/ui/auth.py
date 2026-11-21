@@ -71,19 +71,19 @@ def _auth_frame(title: str, subtitle: str):
     """Black top bar + a centred white card; returns the card container."""
     theme.inject_auth()
     theme.html(f"""
-    <div class="pf-topbar"><div class="l">{theme.logo(26)}<span>PromoFlow</span></div>
+    <div class="pf-topbar"><div class="l">{theme.logo(26)}<span>Tarqiya</span></div>
     <div class="r">University of Sharjah · Faculty Promotion Review</div></div>""")
     _, mid, _ = st.columns([1, 1.15, 1])
     card = mid.container(key="auth_card")
     theme.html(f"""
-    <div class="pf-auth-mark">{theme.logo(46, "#fff")}</div>
+    <div class="pf-auth-mark">{theme.uos_logo(84)}</div>
     <div class="pf-auth-h">{theme.esc(title)}</div>
     <div class="pf-auth-s">{theme.esc(subtitle)}</div>""", card)
     return mid, card
 
 
 def _login_form() -> None:
-    mid, card = _auth_frame("Welcome to PromoFlow", "Sign in to continue to your promotion workspace")
+    mid, card = _auth_frame("Welcome to Tarqiya", "Sign in to continue to your promotion workspace")
     with card:
         with st.form("login", border=False):
             email = st.text_input("University email", placeholder="name@sharjah.ac.ae")

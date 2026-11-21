@@ -15,18 +15,26 @@ same way every time:
 Names are never part of the evidence an agent builds. The agent only *suggests*: the Head of Department and the Dean
 confirm or change each score (rubric_score keeps all three)."""
 import json
+import logging
+import re
+import statistics
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from promoflow.config import COMMITTEE_INPUT_BUDGETS, COMMITTEE_SPREAD
 from promoflow.db.enums import (
     Component, Confidence, DecisionBasis, FlagSeverity, PromotionTrack, RubricCode, Verdict,
 )
 from promoflow.db.models import PromotionCase, Rubric, RubricItem
+from promoflow.workflow import guard
+from promoflow.workflow.retry import _retry_wait
 from promoflow.workflow import llm as llm_module
-from promoflow.workflow.schemas import AgentOutput, CriterionOut, FlagOut, RubricLineOut
+from promoflow.workflow.schemas import AgentOutput, CriterionOut, FlagOut, ManipulationReport, OpinionOut, RubricLineOut
 from promoflow.workflow.verify import claims_from_citations, parse_handles, verify_claims
 
 
@@ -44,6 +52,7 @@ class ItemJudgment(BaseModel):
 # reply in exactly this shape.
 class Judgment(BaseModel):
     items: list[ItemJudgment]
+    manipulation_reported: list[ManipulationReport] = Field(default_factory=list)   # instructions found in the evidence and ignored
 
 
 @dataclass(frozen=True)
@@ -125,6 +134,20 @@ def _has_evidence(item_no: int, ctx: Context, profile: Profile) -> bool:
     return bool(ctx.evidence[item_no]["records"]) or (item_no in profile.shared_for and bool(ctx.shared))
 
 
+# Records of one kind share the same fields, so spelling the field names out for every record wastes most of the request (64 student
+# reports were 8,000 characters). Each group of records with the same fields is sent as one table: the column names once, then one
+# short row per record. The first column is always the handle the model must cite.
+def _tables(records: list[dict]) -> list[dict]:
+    tables: list[dict] = []
+    for r in records:
+        keys = list(r)
+        if tables and tables[-1]["columns"] == keys:
+            tables[-1]["rows"].append([r[k] for k in keys])
+        else:
+            tables.append({"columns": keys, "rows": [[r[k] for k in keys]]})
+    return tables
+
+
 # Build the two messages sent to the model: the fixed instructions (system) and the evidence for every item to
 # score, as JSON (human). When a previous attempt had problems, they are appended so the model can fix them.
 def _messages(ctx: Context, profile: Profile, items: list[Spec], feedback: list[str] | None):
@@ -132,13 +155,15 @@ def _messages(ctx: Context, profile: Profile, items: list[Spec], feedback: list[
         {"item_no": i.item_no, "criterion": i.text,
          "allowed_points": [0 if i.min_points == i.max_points else i.min_points, i.max_points],
          "guidance": profile.guidance[i.item_no], "summary": ctx.evidence[i.item_no]["summary"],
-         "evidence": ctx.evidence[i.item_no]["records"]} for i in items]}
+         "evidence": _tables(ctx.evidence[i.item_no]["records"])} for i in items]}
+    payload["evidence_format"] = ("Evidence is given as tables: \"columns\" names the fields once and each row is one record in that order. "
+                                  "The \"handle\" field of a row is what you cite.")
     if ctx.shared and any(i.item_no in profile.shared_for for i in items):
         payload["shared_evidence"] = {
             "usable_for_items": [i.item_no for i in items if i.item_no in profile.shared_for],
             "note": "Each of these activities may support ONE item only. Cite it under the item where it fits best.",
-            "records": ctx.shared}
-    user = json.dumps(payload, indent=1, ensure_ascii=False, default=str)
+            "records": _tables(ctx.shared)}
+    user = json.dumps(payload, ensure_ascii=False, default=str, separators=(",", ":"))
     if feedback:
         user += "\n\nYour previous answer had these problems. Fix them:\n" + "\n".join(f"- {p}" for p in feedback)
     return [("system", profile.system), ("human", user)]
@@ -171,8 +196,125 @@ def _problems(judged: dict[int, ItemJudgment], items: list[Spec], ctx: Context, 
     return problems
 
 
-def assess(ctx: Context, llm, profile: Profile) -> AgentOutput:
-    """Score the case. `llm` is anything with .with_structured_output(model).invoke(messages); None = unavailable."""
+# Some models (qwen on Groq) answer in their own tool-call format, `<function=Judgment><parameter=items>[ ... ]`, which Groq rejects with
+# "tool call validation failed" although the answer itself is complete. The rejection carries the text the model wrote (`failed_generation`);
+# read the items from it and check them exactly like a normal answer (the same schema, then the same citation and range checks).
+def _salvage(error: Exception) -> "Judgment | None":
+    body = getattr(error, "body", None)
+    err = (body.get("error") if isinstance(body, dict) and isinstance(body.get("error"), dict) else body) or {}
+    text = err.get("failed_generation") if isinstance(err, dict) else None
+    if not isinstance(text, str):
+        return None
+    m = re.search(r"<parameter=items>\s*(\[.*\])\s*</\s*parameter>", text, re.S)
+    if not m:
+        return None
+    try:
+        raw = json.loads(m.group(1))
+        items: dict[int, ItemJudgment] = {}
+        for r in raw:
+            j = ItemJudgment.model_validate(r)
+            if j.item_no not in items or (j.cited and not items[j.item_no].cited):     # a repeated item: keep the one that cites its evidence
+                items[j.item_no] = j
+        return Judgment(items=list(items.values())) if items else None
+    except Exception:
+        return None
+
+
+def _invoke(llm, messages, attempts: int = 5):
+    """One structured model call. When the provider says "too many tokens this minute" (Teaching, Service and Research all ask at about the
+    same time and share one allowance), wait as long as it says and ask again, instead of giving up on the first refusal."""
+    for attempt in range(attempts):
+        try:
+            return llm.with_structured_output(Judgment).invoke(messages)
+        except Exception as e:
+            if "tool_use_failed" in f"{e}" and (salvaged := _salvage(e)) is not None:
+                logging.getLogger(__name__).warning("Read the model's answer from its rejected tool call (%d item(s)).", len(salvaged.items))
+                return salvaged
+            wait = _retry_wait(e, attempt)
+            if wait is None or attempt == attempts - 1:
+                raise
+            time.sleep(wait)
+
+
+# Ask ONE model about every item. If its answer has problems we ask once more with the problems listed; after that we
+# stop and the caller marks what is still wrong as unverified. Returns (answers by item, error text or None).
+def _ask_batch(llm, ctx: Context, profile: Profile, to_judge: list[Spec], reports: list | None = None) -> tuple[dict[int, ItemJudgment], str | None]:
+    judged: dict[int, ItemJudgment] = {}
+    feedback = None
+    seen: list = []          # what the model reported in its last good answer
+    for _attempt in (1, 2):                          # one retry, then the claims are marked unverified
+        try:
+            result = _invoke(llm, _messages(ctx, profile, to_judge, feedback))
+        except Exception as e:                        # network, rate limit, bad output: say so, do not guess
+            return judged, f"{type(e).__name__}: {e}"
+        wanted = {s.item_no for s in to_judge}
+        judged = {j.item_no: j for j in result.items if j.item_no in wanted}
+        seen = list(result.manipulation_reported)
+        feedback = _problems(judged, to_judge, ctx, profile)
+        if not feedback:
+            break
+    if reports is not None:
+        reports.extend(seen)
+    return judged, None
+
+
+def _budget(label: str) -> int | None:
+    """The input-token budget for a model from COMMITTEE_INPUT_BUDGETS ("name=tokens,..."), or None = no limit."""
+    for part in COMMITTEE_INPUT_BUDGETS.split(","):
+        name, _, tokens = part.partition("=")
+        if name.strip() == label and tokens.strip().isdigit():
+            return int(tokens)
+    return None
+
+
+# Items are scored independently, so a model with a small context window can take them in several requests. Pack items, in order, into
+# batches whose request stays within `budget` tokens (estimated as characters / 3.5). An item too big for the budget goes alone.
+def _batches(ctx: Context, profile: Profile, to_judge: list[Spec], budget: int | None) -> list[list[Spec]]:
+    if not budget:
+        return [to_judge]
+    def tokens(items):
+        return sum(len(m[1]) for m in _messages(ctx, profile, items, None)) / 3.5
+    batches: list[list[Spec]] = []
+    for spec in to_judge:
+        if batches and tokens(batches[-1] + [spec]) <= budget:
+            batches[-1].append(spec)
+        else:
+            batches.append([spec])
+    return batches
+
+
+# Ask ONE model about every item (in one request, or in batches when the model has a small window). A batch that fails is reported and
+# the items in the other batches are still kept. Returns (answers by item, error text or None).
+def _ask(llm, ctx: Context, profile: Profile, to_judge: list[Spec], label: str = "", reports: list | None = None) -> tuple[dict[int, ItemJudgment], str | None]:
+    judged: dict[int, ItemJudgment] = {}
+    errors: list[str] = []
+    for batch in _batches(ctx, profile, to_judge, _budget(label)):
+        got, err = _ask_batch(llm, ctx, profile, batch, reports)
+        judged.update(got)
+        if err:
+            errors.append(err)
+    return judged, "; ".join(errors) or None
+
+
+# Several models answered. For each item take the MEDIAN of their points (rounded to half a point), keep the answer closest to it as
+# the one shown (so the rationale and citations are a real model's), and remember everyone's opinion.
+def _consolidate(answers: dict[str, dict[int, ItemJudgment]]) -> tuple[dict[int, ItemJudgment], dict[int, list[tuple[str, ItemJudgment]]]]:
+    merged: dict[int, ItemJudgment] = {}
+    opinions: dict[int, list[tuple[str, ItemJudgment]]] = {}
+    items = {n for judged in answers.values() for n in judged}
+    for n in sorted(items):
+        votes = [(label, judged[n]) for label, judged in answers.items() if n in judged]
+        opinions[n] = votes
+        mid = round(statistics.median(j.points for _, j in votes) * 2) / 2
+        _, rep = min(votes, key=lambda v: abs(v[1].points - mid))       # ties: the first model listed
+        merged[n] = rep.model_copy(update={"points": mid})
+    return merged, opinions
+
+
+def assess(ctx: Context, llm, profile: Profile, committee: list[tuple[str, object]] | None = None) -> AgentOutput:
+    """Score the case. `llm` is anything with .with_structured_output(model).invoke(messages); None = unavailable.
+    `committee` = [(label, llm), ...] with two or more models: each one scores every item, the median is the suggestion
+    and a wide spread is flagged for a person. Without it the single `llm` is used, exactly as before."""
     flags: list[FlagOut] = []
     lines: list[RubricLineOut] = []
     claims = []
@@ -180,26 +322,41 @@ def assess(ctx: Context, llm, profile: Profile) -> AgentOutput:
     applicable = ctx.applicable()
     # Items that go to the language model: not scored by rule, AND having some evidence to judge.
     to_judge = [s for s in applicable if s.item_no in profile.llm_items and _has_evidence(s.item_no, ctx, profile)]
+    members = committee if committee and len(committee) >= 2 else None
+    opinions: dict[int, list[tuple[str, ItemJudgment]]] = {}
 
-    # STEP 1 - ask the model, once for all items. If its answer has problems we ask once more with the problems
-    # listed; after that we stop and mark what is still wrong as unverified.
+    # Text in the applicant's own entries that reads like an instruction to the model: keep it (it is evidence), but a person must read the case.
+    suspicious = [(n, h, hits) for n, e in ctx.evidence.items() for h, hits in guard.scan_records(e["records"])] +                  [(0, h, hits) for h, hits in guard.scan_records(ctx.shared)]
+    if suspicious:
+        where = "; ".join(f"{h} ({', '.join(hits)})" for _n, h, hits in suspicious[:6])
+        flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="possible_prompt_injection",
+                             message=f"Text in the applicant's entries looks like an instruction to the scoring model: {where}. "
+                                     "A person must read it, and the suggested scores should not be trusted until then."))
+
+    # STEP 1 - ask the model(s), once for all items.
     judged: dict[int, ItemJudgment] = {}
     llm_error = None
-    if to_judge and llm is None:
+    reports: list = []                      # instructions the model(s) found in the evidence and ignored
+    if to_judge and members:
+        # Each model has its own rate limit, so they can be asked at the same time.
+        with ThreadPoolExecutor(max_workers=len(members)) as pool:
+            replies = list(pool.map(lambda m: _ask(m[1], ctx, profile, to_judge, m[0], reports), members))
+        answers = {}
+        for (label, _m), (got, err) in zip(members, replies):
+            if err:
+                flags.append(FlagOut(severity=FlagSeverity.WARNING, code="committee_member_failed",
+                                     message=f"Model {label} gave no score and was left out: {err}"))
+            if got:
+                answers[label] = got
+        if answers:
+            judged, opinions = _consolidate(answers)
+        else:
+            llm_error = "No committee model returned a score."
+    elif to_judge and llm is None:
         llm_error = "No language model is configured (set GROQ_API_KEY)."
     elif to_judge:
-        feedback = None
-        for _attempt in (1, 2):                      # one retry, then the claims are marked unverified
-            try:
-                result = llm.with_structured_output(Judgment).invoke(_messages(ctx, profile, to_judge, feedback))
-            except Exception as e:                    # network, rate limit, bad output: say so, do not guess
-                llm_error = f"{type(e).__name__}: {e}"
-                break
-            wanted = {s.item_no for s in to_judge}
-            judged = {j.item_no: j for j in result.items if j.item_no in wanted}
-            feedback = _problems(judged, to_judge, ctx, profile)
-            if not feedback:
-                break
+        judged, llm_error = _ask(llm, ctx, profile, to_judge, "", reports)
+    flags += guard.flags_from_reports(reports)
     if llm_error:
         flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="llm_unavailable",
                              message=f"The judgment items could not be scored: {llm_error}"))
@@ -258,8 +415,17 @@ def assess(ctx: Context, llm, profile: Profile) -> AgentOutput:
                                  message=f"Item {n}: the rationale cites evidence that could not be verified. "
                                          "Check it before relying on this score."))
         claims += item_claims
+        votes = opinions.get(n, [])
+        shown = [OpinionOut(model_name=label, points=min(max(v.points, lo), spec.max_points), rationale=v.rationale,
+                            confidence=v.confidence) for label, v in votes]
+        spread = max(o.points for o in shown) - min(o.points for o in shown) if len(shown) > 1 else None
+        # The models disagree when their points are further apart than COMMITTEE_SPREAD of the item's range (at least 1 point).
+        if spread is not None and spread > max(1.0, COMMITTEE_SPREAD * (spec.max_points - lo)):
+            flags.append(FlagOut(severity=FlagSeverity.NEEDS_HUMAN, code="committee_disagreement",
+                                 message=f"Item {n}: the models disagree ({', '.join(f'{o.model_name} {o.points:g}' for o in shown)}). "
+                                         f"The suggestion is the median, {points:g}; a person should decide."))
         lines.append(RubricLineOut(rubric=rubric, item_no=n, suggested_points=points, rationale=j.rationale,
-                                   basis=DecisionBasis.LLM, confidence=confidence))
+                                   basis=DecisionBasis.LLM, confidence=confidence, opinions=shown, spread=spread))
 
     # A shared activity may support only one item: citing it under two items would count it twice.
     if ctx.shared:
@@ -314,5 +480,6 @@ def assess(ctx: Context, llm, profile: Profile) -> AgentOutput:
     return AgentOutput(component=profile.component, verdict=verdict, narrative=narrative, criteria=criteria,
                        rubric=lines, claims=claims, flags=flags,
                        confidence=Confidence.LOW if shaky or llm_error else Confidence.MEDIUM,
-                       model_name=llm_module.model_name() if to_judge else None,
+                       model_name=((("committee: " + " + ".join(label for label, _ in members))[:100] if members
+                                    else llm_module.model_name()) if to_judge else None),
                        prompt_version=profile.prompt_version)

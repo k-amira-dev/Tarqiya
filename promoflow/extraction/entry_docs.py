@@ -1,11 +1,12 @@
 """One evidence document = one entry: appointment letters, certificates, decisions (scanned or digital).
 
-For each kind of document this file defines (1) what to read from it, as a small schema, (2) how to turn the answer into the values of
+For each kind of document this file defines (1) what is read from it, as a small schema, (2) how to turn what was read into the values of
 a Section 6 / 7 entry, with a problem list for anything missing or doubtful, and (3) which entry function saves it. The reading itself
-is in picture_doc.py. Nothing here touches the database except through `Kind.add`, called by dossier/doc_entries.py.
+is in local_read.py (pdfplumber and OCR) and the rule_*.py modules. Nothing here touches the database except through `Kind.add`, called
+by dossier/doc_entries.py.
 
-The model only COPIES what is printed on the page. The decisions that matter (which role, which level, whether it is inside the
-university, whether the student graduated) are plain rules below, and every value stays editable in the preview before anything is saved.
+The decisions that matter (which role, which level, whether it is inside the university, whether the student graduated) are plain rules below,
+and every value stays editable in the preview before anything is saved.
 """
 import re
 from dataclasses import dataclass, field
@@ -15,8 +16,8 @@ from typing import Callable
 
 from pydantic import BaseModel, Field
 
-from promoflow.extraction.doc_llm import ReadFailed, Usage
-from promoflow.extraction.picture_doc import read_entry_file
+from promoflow.extraction import local_read, rule_letters, rule_reports
+from promoflow.extraction.local_read import ReadFailed
 
 
 # ---- small helpers -------------------------------------------------------------------------------------------------
@@ -72,7 +73,7 @@ class EntryDraft:
     data: bytes
     values: dict
     issues: list[str]
-    route: str                                        # "text" or "picture": how the document was read
+    route: str                                        # "text" (a PDF's text layer, pdfplumber) or "ocr" (a scan, read with OCR)
 
     @property
     def ok(self) -> bool:
@@ -266,9 +267,6 @@ class Kind:
     build: Callable                                   # (parsed, ctx) -> (values, issues)
     columns: Callable                                 # (ctx) -> list[Col]
     finalize: Callable                                # (values, ctx) -> the values the section's add() expects (codes -> ids)
-    hint: Callable = lambda ctx: ""
-    max_chars: int | None = None                      # read only the start of a long document (a paper's first page has everything needed)
-    rows: str | None = None                           # name of the list in `schema` when ONE document holds SEVERAL entries (build then takes one row)
 
 
 def _lookup(list_code: str, code_key: str, id_key: str):
@@ -313,27 +311,43 @@ KINDS: dict[str, Kind] = {
                                      Col("Your role", "role", "select", {"main": "Main supervisor", "associate": "Co-supervisor"}),
                                      Col("Started", "start_date", "date"), Col("Status", "status", "select", {"in_progress": "In progress", "graduated": "Graduated"}),
                                      Col("Graduated", "graduation_date", "date")],
-                        lambda v, ctx: dict(v),
-                        lambda ctx: f"The applicant is {ctx.applicant_name}. Give applicant_role as the role listed for THIS person."),
+                        lambda v, ctx: dict(v)),
 }
 
 
-def read_entries(kind: Kind, filename: str, data: bytes, ctx: Ctx, text_llm, vision_llm) -> tuple[list[EntryDraft], Usage]:
-    """Read one file and return its draft entries (one, or one per row for documents that list several). Raises ReadFailed with a plain message."""
-    parsed, usage, route = read_entry_file(data, kind.schema, text_llm, vision_llm, kind.hint(ctx), kind.max_chars)
-    if kind.rows:
-        built = [kind.build(row, ctx) for row in getattr(parsed, kind.rows)]
-        if not built:
-            raise ReadFailed("No entries were found in this document.")
-    else:
-        built = [kind.build(parsed, ctx)]
-    return [EntryDraft(kind.key, filename, data, values, issues, route) for values, issues in built], usage
+# The kinds read by rules (rule_letters.py, rule_docs.py, rule_text.py); the key is the kind in KINDS, the value the rule set.
+RULE_KINDS = {"committee": "committee", "admin": "admin", "workshop": "workshop", "training": "training", "community": "community",
+              "development": "attendance", "degree": "degree", "rank": "rank", "award": "award", "supervision": "supervision",
+              "innovation": "innovation", "policy": "policy", "paper": "paper", "acceptance": "acceptance", "book": "book", "conference": "conference",
+              "funded": "funded", "peer_observation": "peer", "equivalency": "equivalency", "position": "position", "letter": "letter",
+              "course_file": "syllabus", "cv": "signed", "conditions": "signed", "cover_letter": "signed", "scopus": "scopus", "patent": "patent", "creative": "creative"}
+
+NOT_READ = "This file could not be read (it may be blank, damaged or password-protected). Please enter the values by hand."
 
 
-def read_entry(kind: Kind, filename: str, data: bytes, ctx: Ctx, text_llm, vision_llm) -> tuple[EntryDraft, Usage]:
+def read_entries(kind: Kind, filename: str, data: bytes, ctx: Ctx) -> list[EntryDraft]:
+    """Read one file on this machine and return its draft entries (one, or one per table row for the curriculum summary). Raises ReadFailed.
+
+    The text comes from pdfplumber (a PDF with a text layer) or from OCR (a scan or a picture); plain rules turn it into the entry's values. A value
+    the rules do not find is left empty with a note, so the applicant completes it; nothing is guessed."""
+    if kind.key == "curriculum":                       # one entry per row of the document's table
+        parsed = rule_reports.curriculum(data)
+        if parsed is None:
+            raise ReadFailed("The table in this document could not be read. Please enter the values by hand.")
+        return [EntryDraft(kind.key, filename, data, *kind.build(row, ctx), "text") for row in parsed.rows]
+    text, source = local_read.local_text(data)
+    if not text:
+        raise ReadFailed(NOT_READ)
+    rules = RULE_KINDS[kind.key]
+    read = rule_letters.RULES[rules]
+    fields = read(text, ctx.applicant_name) if rules in rule_letters.NEEDS_APPLICANT else read(text)
+    values, issues = kind.build(kind.schema.model_validate(fields), ctx)
+    return [EntryDraft(kind.key, filename, data, values, issues, source)]
+
+
+def read_entry(kind: Kind, filename: str, data: bytes, ctx: Ctx) -> EntryDraft:
     """Read one file that holds exactly one entry."""
-    drafts, usage = read_entries(kind, filename, data, ctx, text_llm, vision_llm)
-    return drafts[0], usage
+    return read_entries(kind, filename, data, ctx)[0]
 
 
 from promoflow.extraction import entry_docs_more  # noqa: E402,F401  (registers the Section 2-8 kinds in KINDS; must come after the definitions above)

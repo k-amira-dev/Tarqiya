@@ -16,6 +16,8 @@ from enum import Enum
 
 # The four academic ranks, lowest to highest. A promotion moves a person up one step.
 class Rank(str, Enum):
+    ASSISTANT_LECTURER = "assistant_lecturer"   # rank history only: not part of the promotion ladder
+    POSTDOC = "postdoc"                         # rank history only
     LECTURER = "lecturer"
     ASSISTANT_PROFESSOR = "assistant_professor"
     ASSOCIATE_PROFESSOR = "associate_professor"

@@ -18,6 +18,16 @@ def submission_window_rule_on(monkeypatch):
     monkeypatch.setattr(rules, "DEV_IGNORE_SUBMISSION_WINDOW", False)
 
 
+# Evidence files are always encrypted, so every test gets a throw-away key (never a real one).
+@pytest.fixture(autouse=True)
+def document_key(monkeypatch):
+    import base64
+
+    from promoflow import config
+    monkeypatch.setattr(config, "DOCUMENT_ENCRYPTION_KEY", base64.urlsafe_b64encode(b"k" * 32).decode())
+    monkeypatch.setattr(config, "AUDIT_HMAC_KEY", "test-audit-key")
+
+
 # The password given to every seeded test account in these tests.
 TEST_PASSWORD = "test-pass"
 

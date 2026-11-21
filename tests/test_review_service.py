@@ -5,8 +5,8 @@ from datetime import date
 import pytest
 from sqlalchemy import select
 
-from promoflow.db.enums import CaseStatus, Gate, GateOutcome
-from promoflow.db.models import CaseReport, CaseStatusHistory, Flag, GateDecision, User
+from promoflow.db.enums import CaseStatus, Gate, GateOutcome, Rank
+from promoflow.db.models import CaseReport, CaseStatusHistory, Flag, GateDecision, Referee, RefereeCandidate, ScopusEvidence, User
 from promoflow.dossier import section0 as s0
 from promoflow.dossier import section11 as s11
 from promoflow.workflow import review_service
@@ -49,6 +49,23 @@ def users(app_env):
         return {name: uid(s, name) for name in ("applicant", "hod.cs", "dean.comp", "chancellor")}
 
 
+def shortlist(app_env, case_id: int, *, verified: bool, rank: Rank | None = Rank.PROFESSOR, count: int = 2, h_index: int | None = 50) -> list[int]:
+    """Shortlist rows for a case (no conflicts, eligible). Returns the candidate ids."""
+    ids = []
+    with app_env.session_scope() as s:
+        for i in range(count):
+            ref = Referee(full_name=f"Prof. Test {i}", university="Test University", country_code="NL", rank=rank, rank_verified=verified, h_index=h_index,
+                          email=f"test{i}@example.org", openalex_author_id=f"A{case_id}{i}")
+            s.add(ref)
+            s.flush()
+            cand = RefereeCandidate(case_id=case_id, referee_id=ref.id, coi_coauthor=False, coi_same_institution=False,
+                                    coi_used_within_5_years=False, eligible=True)
+            s.add(cand)
+            s.flush()
+            ids.append(cand.id)
+    return ids
+
+
 def test_start_review_runs_the_agents_and_stops_at_the_hod(app_env, svc):
     case_id = submit(app_env)
     svc.start_review(case_id, options=STUB, wait=True)
@@ -78,12 +95,50 @@ def test_full_path_hod_dean_chancellor(app_env, svc):
     assert status(app_env, case_id) == CaseStatus.DEAN_REVIEW
     svc.resume(case_id, u["dean.comp"], Gate.DEAN, GateOutcome.APPROVE, "Agreed", wait=True)
     assert status(app_env, case_id) == CaseStatus.REFEREE_SELECTION
-    svc.select_referees(case_id, u["chancellor"], [1, 2], wait=True)
+    svc.select_referees(case_id, u["chancellor"], shortlist(app_env, case_id, verified=True), wait=True)
     assert status(app_env, case_id) == CaseStatus.AWAITING_REFEREE_REPORTS
     with app_env.session_scope() as s:
         decisions = list(s.scalars(select(GateDecision).where(GateDecision.case_id == case_id)
                                    .order_by(GateDecision.id)))
     assert [(d.gate, d.outcome) for d in decisions] == [(Gate.HOD, GateOutcome.APPROVE), (Gate.DEAN, GateOutcome.APPROVE)]
+
+
+def reach_referee_selection(app_env, svc):
+    u = users(app_env)
+    case_id = submit(app_env)
+    svc.start_review(case_id, options=STUB, wait=True)
+    svc.resume(case_id, u["hod.cs"], Gate.HOD, GateOutcome.APPROVE, wait=True)
+    svc.resume(case_id, u["dean.comp"], Gate.DEAN, GateOutcome.APPROVE, wait=True)
+    assert status(app_env, case_id) == CaseStatus.REFEREE_SELECTION
+    return u, case_id
+
+
+def test_referees_whose_rank_nobody_verified_cannot_be_selected(app_env, svc):
+    u, case_id = reach_referee_selection(app_env, svc)
+    ids = shortlist(app_env, case_id, verified=False)
+    with pytest.raises(svc.ReviewError, match="verify the rank"):
+        svc.select_referees(case_id, u["chancellor"], ids, wait=True)
+    assert status(app_env, case_id) == CaseStatus.REFEREE_SELECTION
+
+
+def test_a_verified_associate_professor_is_not_accepted_and_neither_is_an_unknown_candidate(app_env, svc):
+    u, case_id = reach_referee_selection(app_env, svc)
+    ids = shortlist(app_env, case_id, verified=True, rank=Rank.ASSOCIATE_PROFESSOR, count=1)
+    with pytest.raises(svc.ReviewError, match="not Professor"):
+        svc.select_referees(case_id, u["chancellor"], ids, wait=True)
+    with pytest.raises(svc.ReviewError, match="not on this case"):
+        svc.select_referees(case_id, u["chancellor"], [999999], wait=True)
+    assert status(app_env, case_id) == CaseStatus.REFEREE_SELECTION
+
+
+def test_a_referee_whose_h_index_is_not_higher_than_the_applicants_cannot_be_selected(app_env, svc):
+    u, case_id = reach_referee_selection(app_env, svc)
+    with app_env.session_scope() as s:
+        s.add(ScopusEvidence(case_id=case_id, h_index=50, total_citations=100, screenshot_date=date.today()))
+    ids = shortlist(app_env, case_id, verified=True, h_index=50)                 # equal is not higher
+    with pytest.raises(svc.ReviewError, match="h-index must be higher"):
+        svc.select_referees(case_id, u["chancellor"], ids, wait=True)
+    assert status(app_env, case_id) == CaseStatus.REFEREE_SELECTION
 
 
 def test_decisions_are_checked_against_gate_and_role(app_env, svc):
